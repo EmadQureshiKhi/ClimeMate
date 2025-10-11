@@ -1,0 +1,247 @@
+'use client';
+
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { FileUpload } from './file-upload';
+import { DataPreview } from './data-preview';
+import { EmissionsCalculator } from './emissions-calculator';
+import { CertificatePreview } from './certificate-preview';
+import { 
+  Upload, 
+  FileText, 
+  Calculator, 
+  Award,
+  CheckCircle,
+  ArrowRight,
+  ArrowLeft,
+  Loader2
+} from 'lucide-react';
+
+// FIX: Import CalculationResult type
+import type { CalculationResult } from '@/lib/emissions-calculator';
+
+type Step = 'upload' | 'preview' | 'calculate' | 'certificate';
+
+// FIX: Use CalculationResult for calculations
+interface UploadData {
+  file?: File;
+  data?: any[];
+  calculations?: CalculationResult;
+  emissionDataId?: string;
+  certificate?: {
+    id: string;
+    hash: string;
+  };
+}
+
+export function UploadWizard() {
+  const [currentStep, setCurrentStep] = useState<Step>('upload');
+  const [uploadData, setUploadData] = useState<UploadData>({});
+  const [isSavingCalculations, setIsSavingCalculations] = useState(false);
+
+  const steps = [
+    { id: 'upload', title: 'Upload File', icon: Upload },
+    { id: 'preview', title: 'Preview Data', icon: FileText },
+    { id: 'calculate', title: 'Calculate Emissions', icon: Calculator },
+    { id: 'certificate', title: 'Generate Certificate', icon: Award },
+  ];
+
+  const currentStepIndex = steps.findIndex(step => step.id === currentStep);
+  const progress = ((currentStepIndex + 1) / steps.length) * 100;
+
+  const handleNext = () => {
+    const nextIndex = currentStepIndex + 1;
+    if (nextIndex < steps.length) {
+      setCurrentStep(steps[nextIndex].id as Step);
+    }
+  };
+
+  const handlePrevious = () => {
+    const prevIndex = currentStepIndex - 1;
+    if (prevIndex >= 0) {
+      setCurrentStep(steps[prevIndex].id as Step);
+    }
+  };
+
+  const handleFileUpload = (file: File, data: any[]) => {
+    setUploadData(prev => ({ ...prev, file, data }));
+    handleNext();
+  };
+
+  const handleCalculations = (calculations: CalculationResult, emissionDataId?: string) => {
+    // Just store the calculations, don't navigate yet
+    setUploadData(prev => ({ ...prev, calculations, emissionDataId }));
+  };
+
+  const handleCalculateNext = async () => {
+    if (!uploadData.calculations) return;
+
+    setIsSavingCalculations(true);
+    try {
+      // Mock saving for demo
+      const emissionDataResult = {
+        id: `emission-${Date.now()}`,
+        file_name: uploadData.file?.name || 'uploaded_data.xlsx',
+        total_emissions: uploadData.calculations.totalEmissions,
+        breakdown: uploadData.calculations.categoryBreakdown,
+        raw_data: uploadData.data || [],
+        processed_data: uploadData.calculations.processedData || [],
+        status: 'completed'
+      };
+
+      console.log('✅ Emission data saved successfully (demo):', emissionDataResult);
+      
+      // Update uploadData with the emission data ID
+      setUploadData(prev => ({ ...prev, emissionDataId: emissionDataResult.id }));
+      
+      // Navigate to certificate generation
+      handleNext();
+    } catch (error) {
+      console.error('❌ Failed to save emission data:', error);
+      
+      let errorMessage = 'Unknown error occurred';
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = (error as any).message as string;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Failed to save emission data: ${errorMessage}. Please try again.`);
+    } finally {
+      setIsSavingCalculations(false);
+    }
+  };
+
+  const handleCertificateGeneration = (certificate: any) => {
+    setUploadData(prev => ({ ...prev, certificate }));
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="text-center space-y-4">
+        <h1 className="text-3xl font-bold">Upload Emissions Data</h1>
+        <p className="text-muted-foreground max-w-2xl mx-auto">
+          Upload your emissions data, calculate your carbon footprint, and generate a verifiable certificate
+        </p>
+      </div>
+
+      {/* Progress */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Progress</span>
+              <span className="text-sm text-muted-foreground">
+                Step {currentStepIndex + 1} of {steps.length}
+              </span>
+            </div>
+            <Progress value={progress} className="h-2" />
+            <div className="flex justify-between">
+              {steps.map((step, index) => {
+                const Icon = step.icon;
+                const isActive = index === currentStepIndex;
+                const isCompleted = index < currentStepIndex;
+                
+                return (
+                  <div
+                    key={step.id}
+                    className={`flex flex-col items-center space-y-2 ${
+                      isActive ? 'text-primary' : 
+                      isCompleted ? 'text-green-600' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
+                      isActive ? 'border-primary bg-primary/10' :
+                      isCompleted ? 'border-green-600 bg-green-600/10' : 'border-muted'
+                    }`}>
+                      {isCompleted ? (
+                        <CheckCircle className="h-5 w-5" />
+                      ) : (
+                        <Icon className="h-5 w-5" />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-center">
+                      {step.title}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Step Content */}
+      <div className="min-h-[500px]">
+        {currentStep === 'upload' && (
+          <FileUpload onUpload={handleFileUpload} />
+        )}
+        
+        {currentStep === 'preview' && uploadData.data && (
+          <DataPreview 
+            data={uploadData.data} 
+            fileName={uploadData.file?.name}
+            onNext={handleNext}
+            onPrevious={handlePrevious}
+          />
+        )}
+        
+        {currentStep === 'calculate' && uploadData.data && (
+          <EmissionsCalculator 
+            data={uploadData.data}
+            onCalculate={handleCalculations}
+            onPrevious={handlePrevious}
+          />
+        )}
+        
+        {currentStep === 'certificate' && uploadData.calculations && (
+          <CertificatePreview 
+            calculations={uploadData.calculations}
+            emissionDataId={uploadData.emissionDataId}
+            onGenerate={handleCertificateGeneration}
+            onPrevious={handlePrevious}
+          />
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex justify-between">
+        <Button
+          variant="outline"
+          onClick={handlePrevious}
+          disabled={currentStepIndex === 0}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Previous
+        </Button>
+        
+        {currentStep !== 'certificate' && (
+          <Button
+            onClick={currentStep === 'calculate' ? handleCalculateNext : handleNext}
+            disabled={
+              (currentStep === 'upload' && !uploadData.data) ||
+              (currentStep === 'preview' && !uploadData.data) ||
+              (currentStep === 'calculate' && (!uploadData.calculations || isSavingCalculations))
+            }
+          >
+            {isSavingCalculations ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving Data...
+              </>
+            ) : currentStep === 'calculate' ? (
+              'Generate Certificate'
+            ) : (
+              'Next'
+            )}
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
