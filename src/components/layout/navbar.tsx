@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Menu, 
   Leaf, 
@@ -14,9 +15,75 @@ import {
   Award, 
   ShoppingCart,
   Target,
-  Calculator
+  Calculator,
+  LogOut,
+  User,
+  Wallet,
+  Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+function AuthButton() {
+  const { isAuthenticated, email, walletAddress, displayName, login, logout, linkWallet, user } = useAuth();
+
+  if (!isAuthenticated) {
+    return (
+      <Button onClick={login} size="sm">
+        Login
+      </Button>
+    );
+  }
+
+  // Check if user has email/Google but no wallet linked
+  const hasEmailOrGoogle = email || user?.google;
+  const needsWalletLink = hasEmailOrGoogle && !walletAddress;
+
+  return (
+    <div className="flex items-center space-x-2">
+      <div className="hidden md:flex items-center space-x-2 text-sm">
+        {walletAddress ? (
+          // Show wallet address for wallet users
+          <div className="flex items-center space-x-1 text-muted-foreground">
+            <Wallet className="h-4 w-4" />
+            <span>{walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}</span>
+          </div>
+        ) : displayName ? (
+          // Show display name for email/Google users
+          <div className="flex items-center space-x-1 text-muted-foreground">
+            <User className="h-4 w-4" />
+            <span>{displayName}</span>
+          </div>
+        ) : email ? (
+          // Fallback to email
+          <div className="flex items-center space-x-1 text-muted-foreground">
+            <User className="h-4 w-4" />
+            <span>{email}</span>
+          </div>
+        ) : null}
+      </div>
+      
+      {/* Link Wallet Button - show if user has email but no wallet */}
+      {needsWalletLink && (
+        <Button onClick={linkWallet} variant="outline" size="sm">
+          <Wallet className="h-4 w-4 mr-2" />
+          Link Wallet
+        </Button>
+      )}
+      
+      {/* Settings Button */}
+      <Link href="/settings">
+        <Button variant="ghost" size="sm">
+          <Settings className="h-4 w-4" />
+        </Button>
+      </Link>
+      
+      <Button onClick={logout} variant="outline" size="sm">
+        <LogOut className="h-4 w-4 mr-2" />
+        Logout
+      </Button>
+    </div>
+  );
+}
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: BarChart3 },
@@ -39,11 +106,11 @@ export function Navbar() {
           <Link href="/" className="flex items-center">
             <img 
               src="https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png" 
-              alt="Green Trace Logo" 
+              alt="ClimeMate Logo" 
              className="h-12 w-16 object-contain -mt-1"
             />
            <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight -ml-3">
-              Green<span className="text-green-800">Trace</span>
+              Clime<span className="text-green-800">Mate</span>
             </span>
           </Link>
 
@@ -71,6 +138,7 @@ export function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center space-x-4">
+            <AuthButton />
             <ThemeToggle />
             
             {/* Mobile menu */}

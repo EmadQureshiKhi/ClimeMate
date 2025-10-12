@@ -1,0 +1,144 @@
+// ClimeMate Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// User model - linked to Privy authentication
+model User {
+  id        String   @id @default(cuid())
+  privyId   String   @unique // Privy user ID
+  email     String?  @unique
+  walletAddress String? // Removed @unique - users can link same wallet to different accounts
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  emissionData    EmissionData[]
+  certificates    Certificate[]
+  carbonCredits   CarbonCredit[]
+  ghgCalculations GHGCalculation[]
+  semaAssessments SEMAAssessment[]
+
+  @@index([privyId])
+  @@index([email])
+  @@index([walletAddress])
+}
+
+// Emission Data from uploaded files
+model EmissionData {
+  id              String   @id @default(cuid())
+  userId          String
+  fileName        String
+  totalEmissions  Float
+  breakdown       Json     // Category breakdown
+  rawData         Json     // Original uploaded data
+  processedData   Json     // Processed calculations
+  status          String   @default("completed")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificates Certificate[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Generated Certificates
+model Certificate {
+  id              String   @id @default(cuid())
+  userId          String
+  emissionDataId  String?
+  certificateId   String   @unique // e.g., "GHG-2024-001"
+  title           String
+  totalEmissions  Float
+  breakdown       Json
+  status          String   @default("verified")
+  issueDate       DateTime @default(now())
+  validUntil      DateTime
+  dataHash        String?  // For blockchain verification
+  blockchainTx    String?  // Solana transaction hash
+  ipfsCid         String?  // IPFS metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emissionData EmissionData? @relation(fields: [emissionDataId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([certificateId])
+  @@index([status])
+}
+
+// Carbon Credits from Marketplace
+model CarbonCredit {
+  id              String   @id @default(cuid())
+  userId          String
+  projectTitle    String
+  projectType     String
+  amount          Float    // Amount of credits purchased
+  pricePerUnit    Float
+  totalPrice      Float
+  location        String
+  vintage         String
+  transactionHash String?  // Blockchain transaction
+  status          String   @default("completed")
+  purchaseDate    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([purchaseDate])
+}
+
+// GHG Calculator Entries
+model GHGCalculation {
+  id              String   @id @default(cuid())
+  userId          String
+  orgName         String
+  scope           String
+  category        String
+  fuelCategory    String
+  fuelType        String
+  amount          Float
+  unitType        String
+  baseFactor      Float
+  convertedFactor Float
+  emissions       Float
+  equipmentType   String?
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// SEMA Assessments
+model SEMAAssessment {
+  id              String   @id @default(cuid())
+  userId          String
+  clientName      String
+  assessmentType  String   // "stakeholder", "materiality", etc.
+  data            Json     // Flexible JSON for different assessment types
+  status          String   @default("in_progress")
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientName])
+}

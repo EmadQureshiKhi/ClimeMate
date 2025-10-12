@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   ShoppingCart, 
   Search, 
@@ -28,6 +29,7 @@ export function Marketplace() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [purchasingCredit, setPurchasingCredit] = useState<string | null>(null);
   const { toast } = useToast();
+  const { walletAddress } = useAuth();
   
   // Mock carbon credits data
   const credits = [
@@ -78,6 +80,18 @@ export function Marketplace() {
   }) || [];
 
   const handlePurchase = async (creditId: string, price: number) => {
+    // Check if wallet is connected - will show modal if not
+    const hasWallet = walletAddress !== undefined;
+    
+    if (!hasWallet) {
+      toast({
+        title: "Wallet Required",
+        description: "Please link a Solana wallet to purchase carbon credits.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const amount = 100; // Default purchase amount
     setPurchasingCredit(creditId);
 
