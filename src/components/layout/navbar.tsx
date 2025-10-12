@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
@@ -25,6 +25,13 @@ import { cn } from '@/lib/utils';
 
 function AuthButton() {
   const { isAuthenticated, email, walletAddress, displayName, login, logout, linkWallet, user } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    // Redirect to dashboard after logout
+    router.push('/');
+  };
 
   if (!isAuthenticated) {
     return (
@@ -77,7 +84,7 @@ function AuthButton() {
         </Button>
       </Link>
       
-      <Button onClick={logout} variant="outline" size="sm">
+      <Button onClick={handleLogout} variant="outline" size="sm">
         <LogOut className="h-4 w-4 mr-2" />
         Logout
       </Button>

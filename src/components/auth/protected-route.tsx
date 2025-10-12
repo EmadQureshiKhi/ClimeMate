@@ -1,18 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isReady, isAuthenticated, login } = useAuth();
-  const router = useRouter();
+  const hasTriggeredLogin = useRef(false);
 
   useEffect(() => {
-    if (isReady && !isAuthenticated) {
-      // Redirect to login
+    // Only trigger login once when user is not authenticated
+    if (isReady && !isAuthenticated && !hasTriggeredLogin.current) {
+      hasTriggeredLogin.current = true;
       login();
     }
   }, [isReady, isAuthenticated, login]);
@@ -33,7 +33,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Show loading while redirecting
+  // Show loading while redirecting to login
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -41,7 +41,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
           <CardContent className="pt-6">
             <div className="flex flex-col items-center space-y-4">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-muted-foreground">Redirecting to login...</p>
+              <p className="text-muted-foreground">Please login to continue...</p>
             </div>
           </CardContent>
         </Card>

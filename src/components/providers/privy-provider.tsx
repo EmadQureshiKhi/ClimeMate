@@ -58,6 +58,7 @@ export function PrivyAuthProvider({ children }: { children: React.ReactNode }) {
         ],
       }}
       onSuccess={() => {
+        // Redirect to dashboard after successful login
         router.push('/');
       }}
     >
