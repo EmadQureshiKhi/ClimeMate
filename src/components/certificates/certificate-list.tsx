@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Award, 
   Search, 
@@ -12,51 +13,48 @@ import {
   Calendar,
   CheckCircle,
   Filter,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { getExplorerUrl, getNFTExplorerUrl } from '@/lib/solana-nft';
 
 export function CertificateList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [certificates, setCertificates] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { userId } = useAuth();
   
-  // Mock certificates data
-  const certificates = [
-    {
-      id: 'cert-1',
-      certificate_id: 'GHG-2024-001',
-      title: 'Q1 2024 Emissions Certificate',
-      total_emissions: 2450,
-      breakdown: { Energy: 1200, Transport: 850, Waste: 400 },
-      status: 'verified',
-      issue_date: '2024-04-15',
-      valid_until: '2025-04-15',
-      data_hash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: 'cert-2',
-      certificate_id: 'GHG-2024-002',
-      title: 'Q2 2024 Emissions Certificate',
-      total_emissions: 2180,
-      breakdown: { Energy: 1100, Transport: 780, Waste: 300 },
-      status: 'verified',
-      issue_date: '2024-07-15',
-      valid_until: '2025-07-15',
-      data_hash: 'cd7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015cd',
-      created_at: new Date().toISOString(),
+  // Fetch user's certificates
+  useEffect(() => {
+    if (userId) {
+      fetchCertificates();
     }
-  ];
-  
-  const isLoading = false;
+  }, [userId]);
 
-  const filteredCertificates = certificates?.filter(cert => {
+  const fetchCertificates = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/certificates/list?userId=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCertificates(data.certificates || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch certificates:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredCertificates = certificates.filter(cert => {
     const matchesSearch = cert.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         cert.certificate_id.toLowerCase().includes(searchTerm.toLowerCase());
+                         cert.certificateId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || cert.status === statusFilter;
     return matchesSearch && matchesStatus;
-  }) || [];
+  });
 
   // Download certificate as text file
   const downloadCertificatePDF = (certificate: any) => {
@@ -64,11 +62,11 @@ export function CertificateList() {
 CARBON EMISSIONS CERTIFICATE
 ============================
 
-Certificate ID: ${certificate.certificate_id}
+Certificate ID: ${certificate.certificateId}
 Title: ${certificate.title}
-Total Emissions: ${certificate.total_emissions.toLocaleString()} kg CO₂e
-Issue Date: ${format(new Date(certificate.issue_date), 'PPP')}
-Valid Until: ${format(new Date(certificate.valid_until), 'PPP')}
+Total Emissions: ${certificate.totalEmissions.toLocaleString()} kg CO₂e
+Issue Date: ${format(new Date(certificate.issueDate), 'PPP')}
+Valid Until: ${format(new Date(certificate.validUntil), 'PPP')}
 Status: ${certificate.status}
 
 EMISSIONS BREAKDOWN:
@@ -77,10 +75,9 @@ ${Object.entries(certificate.breakdown).map(([category, emissions]) =>
 ).join('\n')}
 
 BLOCKCHAIN VERIFICATION:
-${certificate.blockchain_tx ? `Transaction: ${certificate.blockchain_tx}` : 'No blockchain transaction'}
-${certificate.hcs_message_id ? `HCS Message: ${certificate.hcs_message_id}` : 'No HCS message'}
-${certificate.data_hash ? `Data Hash: ${certificate.data_hash}` : 'No data hash'}
-${certificate.ipfs_cid ? `IPFS CID: ${certificate.ipfs_cid}` : 'No IPFS metadata'}
+${certificate.blockchainTx ? `Transaction: ${certificate.blockchainTx}` : 'No blockchain transaction'}
+${certificate.ipfsCid ? `NFT Address: ${certificate.ipfsCid}` : 'No NFT minted'}
+${certificate.dataHash ? `Data Hash: ${certificate.dataHash}` : 'No data hash'}
 
 Generated: ${new Date().toLocaleString()}
     `.trim();
@@ -89,12 +86,13 @@ Generated: ${new Date().toLocaleString()}
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Certificate_${certificate.certificate_id}.txt`;
+    a.download = `Certificate_${certificate.certificateId}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'verified':
@@ -114,21 +112,8 @@ Generated: ${new Date().toLocaleString()}
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Certificates</h1>
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="h-4 bg-muted rounded w-3/4"></div>
-                <div className="h-3 bg-muted rounded w-1/2"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="h-3 bg-muted rounded"></div>
-                  <div className="h-3 bg-muted rounded w-2/3"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       </div>
     );
@@ -223,7 +208,7 @@ Generated: ${new Date().toLocaleString()}
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <CardTitle className="text-lg">{certificate.title}</CardTitle>
-                    <CardDescription>ID: {certificate.certificate_id}</CardDescription>
+                    <CardDescription>ID: {certificate.certificateId}</CardDescription>
                   </div>
                   <Badge className={getStatusColor(certificate.status)}>
                     {certificate.status === 'verified' && <CheckCircle className="h-3 w-3 mr-1" />}
@@ -235,15 +220,15 @@ Generated: ${new Date().toLocaleString()}
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Total Emissions</span>
-                    <span className="font-medium">{certificate.total_emissions.toLocaleString()} kg CO₂e</span>
+                    <span className="font-medium">{certificate.totalEmissions.toLocaleString()} kg CO₂e</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Issue Date</span>
-                    <span className="font-medium">{format(new Date(certificate.issue_date), 'MMM dd, yyyy')}</span>
+                    <span className="font-medium">{format(new Date(certificate.issueDate), 'MMM dd, yyyy')}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Valid Until</span>
-                    <span className="font-medium">{format(new Date(certificate.valid_until), 'MMM dd, yyyy')}</span>
+                    <span className="font-medium">{format(new Date(certificate.validUntil), 'MMM dd, yyyy')}</span>
                   </div>
                 </div>
 
@@ -259,22 +244,49 @@ Generated: ${new Date().toLocaleString()}
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button asChild size="sm" className="flex-1">
-                    <Link href={`/certificates/${certificate.certificate_id}`}>
+                  <Button 
+                    asChild
+                    size="sm"
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    <Link href={`/certificates/${certificate.id}`}>
                       View Details
                     </Link>
                   </Button>
-                 <Button 
-                   variant="outline" 
-                   size="sm"
-                   onClick={() => downloadCertificatePDF(certificate)}
-                   title="Download Certificate"
-                 >
+                  
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => downloadCertificatePDF(certificate)}
+                    title="Download Certificate"
+                    className="px-3"
+                  >
                     <Download className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="sm" disabled title="Solana Explorer Coming Soon">
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
+                  
+                  {certificate.ipfsCid && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(getNFTExplorerUrl(certificate.ipfsCid), '_blank')}
+                      title="View NFT"
+                      className="px-3"
+                    >
+                      <Award className="h-4 w-4" />
+                    </Button>
+                  )}
+                  
+                  {certificate.blockchainTx && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(getExplorerUrl(certificate.blockchainTx), '_blank')}
+                      title="View Transaction"
+                      className="px-3"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

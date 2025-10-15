@@ -16,19 +16,12 @@ export function PrivyAuthProvider({ children }: { children: React.ReactNode }) {
           theme: 'light',
           accentColor: '#16a34a', // Green color matching your brand
           logo: 'https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png',
-          // Show all Solana wallets - detected wallets will appear first
+          // Show Solana wallets
           walletList: [
             'detected_solana_wallets', // Auto-detect installed Solana wallets
             'phantom',
             'solflare',
             'backpack',
-            'glow',
-            'slope',
-            'sollet',
-            'coin98',
-            'trust',
-            'exodus',
-            'brave',
           ],
           walletChainType: 'solana-only', // Only show Solana wallets
         },
@@ -36,24 +29,27 @@ export function PrivyAuthProvider({ children }: { children: React.ReactNode }) {
         // Login methods
         loginMethods: ['email', 'wallet', 'google'],
         
-        // Embedded wallets - DISABLED
+        // Embedded wallets configuration
         embeddedWallets: {
-          createOnLogin: 'off',
-          noPromptOnSignature: false,
+          solana: {
+            createOnLogin: 'off',
+          },
         },
         
         // External wallets - Solana connectors (REQUIRED!)
         externalWallets: {
           solana: {
-            connectors: toSolanaWalletConnectors(),
+            connectors: toSolanaWalletConnectors({
+              shouldAutoConnect: true,
+            }),
           },
         },
         
         // Solana-specific configuration
         solanaClusters: [
           {
-            name: 'mainnet-beta',
-            rpcUrl: 'https://api.mainnet-beta.solana.com',
+            name: process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet',
+            rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.devnet.solana.com',
           },
         ],
       }}

@@ -13,6 +13,10 @@
   "dependencies": {
     "@fastify/cors": "^8.5.0",
     "@hookform/resolvers": "^3.3.2",
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/umi": "^1.4.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^1.4.1",
+    "@metaplex-foundation/umi-uploader-irys": "^1.4.1",
     "@prisma/client": "^6.17.1",
     "@privy-io/react-auth": "^3.3.0",
     "@privy-io/server-auth": "^1.32.5",
@@ -44,6 +48,7 @@
     "@wallet-standard/app": "^1.1.0",
     "@walletconnect/ethereum-provider": "^2.21.6",
     "@walletconnect/modal": "^2.7.0",
+    "bs58": "^6.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "crypto-js": "^4.2.0",

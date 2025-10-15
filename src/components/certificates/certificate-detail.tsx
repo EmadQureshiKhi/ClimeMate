@@ -39,28 +39,32 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
   const [copied, setCopied] = useState(false);
   const [showRetirementForm, setShowRetirementForm] = useState(false);
   const [retirementAmount, setRetirementAmount] = useState<number>(0);
+  const [certificate, setCertificate] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const { toast } = useToast();
   
-  // Mock certificate data
-  const certificate = {
-    id: 'cert-1',
-    certificate_id: certificateId,
-    title: 'Q1 2024 Emissions Certificate',
-    total_emissions: 2450,
-    breakdown: { Energy: 1200, Transport: 850, Waste: 400 },
-    status: 'verified',
-    issue_date: '2024-04-15',
-    valid_until: '2025-04-15',
-    data_hash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
-    offset_status: 'not_offset',
-    offset_amount: 0,
-    created_at: new Date().toISOString(),
-    emission_details: null
-  };
+  // Fetch certificate data
+  React.useEffect(() => {
+    const fetchCertificate = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/certificates/${certificateId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setCertificate(data.certificate);
+        }
+      } catch (error) {
+        console.error('Failed to fetch certificate:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchCertificate();
+  }, [certificateId]);
   
   const retirementTransactions: any[] = [];
-  const isLoading = false;
   const isLoadingRetirements = false;
 
   const handleRetireCredits = async () => {
@@ -175,33 +179,23 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Total Emissions</label>
                   <p className="text-2xl font-bold text-primary">
-                    {certificate.total_emissions.toLocaleString()} kg CO₂e
+                    {certificate.totalEmissions.toLocaleString()} kg CO₂e
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Offset Status</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={
-                      certificate.offset_status === 'fully_offset' ? 'default' :
-                      certificate.offset_status === 'partially_offset' ? 'secondary' : 'outline'
-                    }>
-                      {certificate.offset_status === 'fully_offset' ? 'Fully Offset' :
-                       certificate.offset_status === 'partially_offset' ? 'Partially Offset' : 'Not Offset'}
-                    </Badge>
-                    {(certificate.offset_amount ?? 0) > 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        ({(certificate.offset_amount ?? 0)} kg CO₂e retired)
-                      </span>
-                    )}
-                  </div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    {certificate.status}
+                  </Badge>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Issue Date</label>
-                  <p className="font-medium">{format(new Date(certificate.issue_date), 'PPP')}</p>
+                  <p className="font-medium">{format(new Date(certificate.issueDate), 'PPP')}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Valid Until</label>
-                  <p className="font-medium">{format(new Date(certificate.valid_until), 'PPP')}</p>
+                  <p className="font-medium">{format(new Date(certificate.validUntil), 'PPP')}</p>
                 </div>
               </div>
               <div className="space-y-4">
@@ -229,37 +223,67 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Certificate ID</label>
                 <div className="flex items-center gap-2 mt-1">
-                  <code className="text-sm bg-muted px-2 py-1 rounded">{certificate.certificate_id}</code>
+                  <code className="text-sm bg-muted px-2 py-1 rounded">{certificate.certificateId}</code>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => copyToClipboard(certificate.certificate_id)}
+                    onClick={() => copyToClipboard(certificate.certificateId)}
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Data Hash</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
-                    {certificate.data_hash.substring(0, 16)}...
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => copyToClipboard(certificate.data_hash)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+              {certificate.dataHash && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Data Hash</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
+                      {certificate.dataHash.substring(0, 16)}...
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => copyToClipboard(certificate.dataHash)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Blockchain Verification</label>
-                <div className="bg-purple-50 dark:bg-purple-950 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                  <p className="text-sm text-purple-700 dark:text-purple-300">
-                    Solana blockchain verification coming soon
-                  </p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadCertificatePDF(certificate)}
+                    title="Download Certificate"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                  {certificate.ipfsCid && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(`https://explorer.solana.com/tx/${certificate.ipfsCid}?cluster=devnet`, '_blank')}
+                      title="View NFT Mint Transaction"
+                    >
+                      <Award className="h-4 w-4 mr-2" />
+                      NFT Mint
+                    </Button>
+                  )}
+                  {certificate.blockchainTx && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(`https://explorer.solana.com/tx/${certificate.blockchainTx}?cluster=devnet`, '_blank')}
+                      title="View Blockchain Transaction"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Transaction
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -282,18 +306,18 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
               <p className="text-sm text-muted-foreground">Certificate Emissions</p>
-              <p className="text-xl font-bold">{certificate.total_emissions.toLocaleString()} kg CO₂e</p>
+              <p className="text-xl font-bold">{certificate.totalEmissions.toLocaleString()} kg CO₂e</p>
             </div>
             <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
-              <p className="text-sm text-muted-foreground">Already Offset</p>
-              <p className="text-xl font-bold text-green-600">
-                {(certificate.offset_amount ?? 0)} kg CO₂e
+              <p className="text-sm text-muted-foreground">Status</p>
+              <p className="text-xl font-bold text-green-600 capitalize">
+                {certificate.status}
               </p>
             </div>
             <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
-              <p className="text-sm text-muted-foreground">Your CO2e Balance</p>
+              <p className="text-sm text-muted-foreground">Issue Date</p>
               <p className="text-xl font-bold text-blue-600">
-                Blockchain Integration Coming Soon
+                {format(new Date(certificate.issueDate), 'MMM dd, yyyy')}
               </p>
             </div>
           </div>
@@ -319,13 +343,13 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   id="retirement-amount"
                   type="number"
                   min="1"
-                  max={certificate.total_emissions - (certificate.offset_amount ?? 0)}
+                  max={certificate.totalEmissions}
                   value={retirementAmount || ''}
                   onChange={(e) => setRetirementAmount(parseInt(e.target.value) || 0)}
                   placeholder="Enter amount to retire"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Maximum: {(certificate.total_emissions - (certificate.offset_amount ?? 0)).toLocaleString()} kg CO₂e
+                  Maximum: {certificate.totalEmissions.toLocaleString()} kg CO₂e
                 </p>
               </div>
 
@@ -494,7 +518,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
       </Card>
 
       {/* Detailed Activities - Only show if we have emission details */}
-      {certificate.emission_details?.processed_data && (
+      {false && certificate && (
         <Card>
           <CardHeader>
             <CardTitle>Detailed Activities</CardTitle>
