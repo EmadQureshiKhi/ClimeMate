@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import CryptoJS from 'crypto-js';
-import { mintCertificateNFT, getExplorerUrl, getNFTExplorerUrl, type CertificateMetadata } from '@/lib/solana-nft';
+import { mintCertificateNFT, logCertificateOnChain, getExplorerUrl, getNFTExplorerUrl, type CertificateMetadata } from '@/lib/solana-nft';
 
 interface CertificatePreviewProps {
   calculations: any;
@@ -100,7 +100,31 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
 
       console.log('✅ NFT minted successfully:', nftResult);
 
-      // 3. Save certificate to database
+      // 3. Log certificate creation on-chain
+      console.log('📝 Logging certificate on blockchain...');
+      const logResult = await logCertificateOnChain(
+        walletAddress,
+        {
+          certificateId,
+          dataHash,
+          totalEmissions: calculations.totalEmissions,
+          breakdown,
+          timestamp: new Date().toISOString(),
+        },
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (!logResult.success) {
+        console.warn('⚠️ Failed to log certificate on-chain:', logResult.error);
+        // Don't fail the whole process, just warn
+      } else {
+        console.log('✅ Certificate logged on-chain:', logResult.signature);
+      }
+
+      // 4. Save certificate to database
       const response = await fetch('/api/certificates/create', {
         method: 'POST',
         headers: {
@@ -117,6 +141,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
           blockchainTx: nftResult.transactionSignature,
           nftAddress: nftResult.nftAddress,
           metadataUri: nftResult.metadataUri,
+          logTransactionSignature: logResult.success ? logResult.signature : undefined,
         }),
       });
 
@@ -127,7 +152,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       const { certificate: savedCertificate } = await response.json();
       console.log('✅ Certificate saved to database:', savedCertificate);
 
-      // 4. Set certificate state
+      // 5. Set certificate state
       const result = {
         ...savedCertificate,
         nftAddress: nftResult.nftAddress,
@@ -278,29 +303,32 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
               </Alert>
 
               {/* Transaction Links */}
-              {certificate.transactionSignature && (
+              {(certificate.transactionSignature || certificate.logTransactionSignature) && (
                 <div className="grid gap-3 p-4 bg-muted/50 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Blockchain Transaction:</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(getExplorerUrl(certificate.transactionSignature), '_blank')}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View on Solana Explorer
-                    </Button>
-                  </div>
-                  {certificate.nftAddress && (
+                  <div className="text-sm font-medium mb-2">Blockchain Transactions:</div>
+                  {certificate.transactionSignature && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">NFT Certificate:</span>
+                      <span className="text-sm text-muted-foreground">NFT Certificate:</span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => window.open(getNFTExplorerUrl(certificate.nftAddress), '_blank')}
+                        onClick={() => window.open(getExplorerUrl(certificate.transactionSignature), '_blank')}
+                      >
+                        <Award className="h-4 w-4 mr-2" />
+                        View NFT on Solscan
+                      </Button>
+                    </div>
+                  )}
+                  {certificate.logTransactionSignature && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Certificate Log:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(getExplorerUrl(certificate.logTransactionSignature), '_blank')}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        View NFT
+                        View Log on Solscan
                       </Button>
                     </div>
                   )}

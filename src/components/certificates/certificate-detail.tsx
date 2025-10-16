@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { getExplorerUrl } from '@/lib/solana-nft';
 import { EmissionEntry } from '@/types/ghg';
 import React from 'react';
 
@@ -262,26 +263,26 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                     <Download className="h-4 w-4 mr-2" />
                     Download
                   </Button>
-                  {certificate.ipfsCid && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(`https://explorer.solana.com/tx/${certificate.ipfsCid}?cluster=devnet`, '_blank')}
-                      title="View NFT Mint Transaction"
-                    >
-                      <Award className="h-4 w-4 mr-2" />
-                      NFT Mint
-                    </Button>
-                  )}
                   {certificate.blockchainTx && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => window.open(`https://explorer.solana.com/tx/${certificate.blockchainTx}?cluster=devnet`, '_blank')}
-                      title="View Blockchain Transaction"
+                      title="View NFT Certificate Transaction"
+                    >
+                      <Award className="h-4 w-4 mr-2" />
+                      NFT Certificate
+                    </Button>
+                  )}
+                  {certificate.logTransactionSignature && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(`https://explorer.solana.com/tx/${certificate.logTransactionSignature}?cluster=devnet`, '_blank')}
+                      title="View Certificate Log on Solscan"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Transaction
+                      Certificate Log
                     </Button>
                   )}
                 </div>
