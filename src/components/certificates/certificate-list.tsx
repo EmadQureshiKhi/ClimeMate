@@ -264,24 +264,24 @@ Generated: ${new Date().toLocaleString()}
                     <Download className="h-4 w-4" />
                   </Button>
                   
-                  {certificate.ipfsCid && (
+                  {certificate.blockchainTx && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open(getNFTExplorerUrl(certificate.ipfsCid), '_blank')}
-                      title="View NFT"
+                      onClick={() => window.open(getExplorerUrl(certificate.blockchainTx), '_blank')}
+                      title="View NFT Certificate"
                       className="px-3"
                     >
                       <Award className="h-4 w-4" />
                     </Button>
                   )}
                   
-                  {certificate.blockchainTx && (
+                  {certificate.logTransactionSignature && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open(getExplorerUrl(certificate.blockchainTx), '_blank')}
-                      title="View Transaction"
+                      onClick={() => window.open(getExplorerUrl(certificate.logTransactionSignature), '_blank')}
+                      title="View Certificate Log"
                       className="px-3"
                     >
                       <ExternalLink className="h-4 w-4" />
