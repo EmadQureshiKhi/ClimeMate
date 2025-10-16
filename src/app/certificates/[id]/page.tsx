@@ -1,14 +1,16 @@
 import { CertificateDetail } from '@/components/certificates/certificate-detail';
 
-export default function CertificateDetailPage({
+export default async function CertificateDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
+  
   return (
     <div>
       <div className="container mx-auto px-4 py-8">
-        <CertificateDetail certificateId={params.id} />
+        <CertificateDetail certificateId={id} />
       </div>
     </div>
   );
