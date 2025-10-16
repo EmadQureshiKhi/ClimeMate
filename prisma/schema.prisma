@@ -64,8 +64,11 @@ model Certificate {
   issueDate       DateTime @default(now())
   validUntil      DateTime
   dataHash        String?  // For blockchain verification
-  blockchainTx    String?  // Solana transaction hash
-  ipfsCid         String?  // IPFS metadata
+  blockchainTx    String?  // Solana NFT transaction hash
+  nftAddress      String?  // Solana NFT mint address
+  metadataUri     String?  // NFT metadata URI
+  logTransactionSignature String? // Solana memo log transaction
+  ipfsCid         String?  // IPFS metadata (legacy)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

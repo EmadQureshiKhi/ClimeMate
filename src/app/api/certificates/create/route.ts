@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
       blockchainTx,
       nftAddress,
       metadataUri,
+      logTransactionSignature,
     } = body;
 
     if (!privyUserId || !certificateId) {
@@ -81,7 +82,10 @@ export async function POST(request: NextRequest) {
         validUntil,
         dataHash,
         blockchainTx,
-        ipfsCid: nftAddress, // Store NFT address in ipfsCid field
+        nftAddress,
+        metadataUri,
+        logTransactionSignature,
+        ipfsCid: nftAddress, // Keep for backward compatibility
       },
     });
 
