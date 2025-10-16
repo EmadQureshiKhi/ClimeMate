@@ -1,4 +1,4 @@
-import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
 
 // Solana configuration
@@ -213,4 +213,112 @@ export function getExplorerUrl(signature: string, cluster?: 'mainnet-beta' | 'de
 export function getNFTExplorerUrl(transactionSignature: string, cluster?: 'mainnet-beta' | 'devnet' | 'testnet'): string {
   // Since we're storing the transaction signature, use the same URL as getExplorerUrl
   return getExplorerUrl(transactionSignature, cluster);
+}
+
+/**
+ * Log certificate creation on Solana blockchain using memo instruction
+ * This creates an immutable audit trail visible on Solscan
+ */
+export async function logCertificateOnChain(
+  walletAddress: string,
+  certificateData: {
+    certificateId: string;
+    dataHash: string;
+    totalEmissions: number;
+    breakdown: Record<string, number>;
+    timestamp: string;
+  },
+  signAndSendTransaction: (transaction: any) => Promise<{ signature: string }>
+): Promise<{ success: boolean; signature?: string; error?: string }> {
+  try {
+    console.log('📝 Logging certificate on Solana blockchain...');
+    
+    // Create log message
+    const logMessage = {
+      type: 'CARBON_CERTIFICATE',
+      version: '1.0',
+      certificateId: certificateData.certificateId,
+      dataHash: certificateData.dataHash,
+      totalEmissions: certificateData.totalEmissions,
+      breakdown: certificateData.breakdown,
+      timestamp: certificateData.timestamp,
+    };
+    
+    const logString = JSON.stringify(logMessage);
+    console.log('📋 Log message:', logString);
+    
+    // Create connection
+    const connection = new Connection(SOLANA_RPC, 'confirmed');
+    
+    // Create memo instruction
+    // Memo program ID: MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
+    const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+    
+    const memoInstruction = new TransactionInstruction({
+      keys: [],
+      programId: MEMO_PROGRAM_ID,
+      data: Buffer.from(logString, 'utf-8'),
+    });
+    
+    // Create transaction with memo
+    const transaction = new Transaction().add(memoInstruction);
+    
+    // Get recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = new PublicKey(walletAddress);
+    transaction.lastValidBlockHeight = lastValidBlockHeight;
+    
+    console.log('📦 Memo transaction created, serializing...');
+    
+    // Serialize transaction
+    const serializedTransaction = transaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    });
+    
+    console.log('✍️ Signing and sending memo transaction...');
+    
+    // Sign and send transaction
+    const result = await signAndSendTransaction({
+      transaction: serializedTransaction,
+      chain: `solana:${SOLANA_NETWORK}`,
+    });
+    
+    // Extract signature
+    let signature: string;
+    
+    if (typeof result === 'string') {
+      signature = result;
+    } else if (result && typeof result === 'object') {
+      const sig = (result as any).signature;
+      
+      if (typeof sig === 'string') {
+        signature = sig;
+      } else if (sig && typeof sig === 'object' && sig.type === 'Buffer' && Array.isArray(sig.data)) {
+        const buffer = Buffer.from(sig.data);
+        signature = bs58.encode(buffer);
+      } else if (Buffer.isBuffer(sig)) {
+        signature = bs58.encode(sig);
+      } else {
+        throw new Error(`Invalid signature format: ${JSON.stringify(sig)}`);
+      }
+    } else {
+      throw new Error(`Invalid result format: ${JSON.stringify(result)}`);
+    }
+    
+    console.log('✅ Certificate logged on-chain! Signature:', signature);
+    console.log('🔍 View on Solscan:', getExplorerUrl(signature));
+    
+    return {
+      success: true,
+      signature,
+    };
+  } catch (error: any) {
+    console.error('❌ Error logging certificate on-chain:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to log certificate',
+    };
+  }
 }
