@@ -518,8 +518,8 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
         </CardContent>
       </Card>
 
-      {/* Detailed Activities - Only show if we have emission details */}
-      {false && certificate && (
+      {/* Detailed Activities - Only show if we have processed data */}
+      {certificate && certificate.processedData && Array.isArray(certificate.processedData) && certificate.processedData.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Detailed Activities</CardTitle>
@@ -529,7 +529,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {certificate.emission_details.processed_data.map((entry: any, index: number) => (
+              {certificate.processedData.map((entry: any, index: number) => (
                 <div key={entry.id || index} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
@@ -548,7 +548,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                         {(entry.emissions || entry.amount)?.toFixed(2)} kg CO₂e
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {(((entry.emissions || entry.amount) / certificate.total_emissions) * 100).toFixed(1)}% of total
+                        {(((entry.emissions || entry.amount) / certificate.totalEmissions) * 100).toFixed(1)}% of total
                       </p>
                     </div>
                   </div>
@@ -602,33 +602,33 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    {certificate.emission_details.processed_data.filter((e: any) => e.scope === 'Scope 1').length}
+                    {certificate.processedData.filter((e: any) => e.scope === 'Scope 1').length}
                   </div>
                   <div className="text-sm text-blue-700 dark:text-blue-300">Scope 1 Activities</div>
                   <div className="text-xs text-blue-600">
-                    {(certificate.emission_details.processed_data
+                    {(certificate.processedData
                       .filter((e: any) => e.scope === 'Scope 1')
                       .reduce((sum: number, e: any) => sum + (e.emissions || e.amount || 0), 0) / 1000).toFixed(2)} tonnes CO₂e
                   </div>
                 </div>
                 <div className="bg-green-50 dark:bg-green-950 p-4 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    {certificate.emission_details.processed_data.filter((e: any) => e.scope === 'Scope 2').length}
+                    {certificate.processedData.filter((e: any) => e.scope === 'Scope 2').length}
                   </div>
                   <div className="text-sm text-green-700 dark:text-green-300">Scope 2 Activities</div>
                   <div className="text-xs text-green-600">
-                    {(certificate.emission_details.processed_data
+                    {(certificate.processedData
                       .filter((e: any) => e.scope === 'Scope 2')
                       .reduce((sum: number, e: any) => sum + (e.emissions || e.amount || 0), 0) / 1000).toFixed(2)} tonnes CO₂e
                   </div>
                 </div>
                 <div className="bg-purple-50 dark:bg-purple-950 p-4 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">
-                    {new Set(certificate.emission_details.processed_data.map((e: any) => e.category)).size}
+                    {new Set(certificate.processedData.map((e: any) => e.category)).size}
                   </div>
                   <div className="text-sm text-purple-700 dark:text-purple-300">Categories Used</div>
                   <div className="text-xs text-purple-600">
-                    {(certificate.total_emissions / 1000).toFixed(2)} tonnes CO₂e total
+                    {(certificate.totalEmissions / 1000).toFixed(2)} tonnes CO₂e total
                   </div>
                 </div>
               </div>
@@ -638,7 +638,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
       )}
 
       {/* Organizational Details */}
-      {certificate.emission_details?.raw_data?.[0] && (
+      {certificate && certificate.summary && (
         <Card>
           <CardHeader>
             <CardTitle>Assessment Details</CardTitle>
@@ -651,36 +651,33 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Organization</label>
-                  <p className="font-medium">{certificate.emission_details.raw_data[0].orgName || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.orgName || 'Not specified'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Boundary Approach</label>
-                  <p className="font-medium">{certificate.emission_details.raw_data[0].boundaryApproach || 'Not specified'}</p>
-                  {certificate.emission_details.raw_data[0].controlSubtype && (
-                    <p className="text-sm text-muted-foreground">→ {certificate.emission_details.raw_data[0].controlSubtype}</p>
+                  <p className="font-medium">{certificate.summary?.boundaryApproach || 'Not specified'}</p>
+                  {certificate.summary?.controlSubtype && (
+                    <p className="text-sm text-muted-foreground">→ {certificate.summary.controlSubtype}</p>
                   )}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Operational Boundary</label>
-                  <p className="font-medium">{certificate.emission_details.raw_data[0].operationalBoundary || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.operationalBoundary || 'Not specified'}</p>
                 </div>
               </div>
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Emission Sources</label>
-                  <p className="font-medium">{certificate.emission_details.raw_data[0].emissionSources || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.emissionSources || 'Not specified'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Total Activities</label>
-                  <p className="font-medium">{certificate.emission_details.processed_data?.length || 0} calculations</p>
+                  <p className="font-medium">{certificate.processedData?.length || 0} calculations</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Assessment Date</label>
                   <p className="font-medium">
-                    {certificate.emission_details.raw_data[0].timestamp 
-                      ? format(new Date(certificate.emission_details.raw_data[0].timestamp), 'PPP')
-                      : format(new Date(certificate.created_at), 'PPP')
-                    }
+                    {format(new Date(certificate.issueDate), 'PPP')}
                   </p>
                 </div>
               </div>
