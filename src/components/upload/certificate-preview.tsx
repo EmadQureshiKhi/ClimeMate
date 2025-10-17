@@ -20,6 +20,7 @@ import {
 import { format } from 'date-fns';
 import CryptoJS from 'crypto-js';
 import { mintCertificateNFT, logCertificateOnChain, getExplorerUrl, getNFTExplorerUrl, type CertificateMetadata } from '@/lib/solana-nft';
+import { NotificationToast } from './notification-toast';
 
 interface CertificatePreviewProps {
   calculations: any;
@@ -35,18 +36,47 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
   const { userId, walletAddress } = useAuth();
   const { wallets } = useWallets();
   
+  // Notification state
+  const [notification, setNotification] = useState<{
+    isVisible: boolean;
+    type: 'success' | 'error' | 'warning' | 'info';
+    title: string;
+    message: string;
+  }>({
+    isVisible: false,
+    type: 'info',
+    title: '',
+    message: '',
+  });
+
+  const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setNotification({
+      isVisible: true,
+      type,
+      title,
+      message,
+    });
+  };
+  
   // Check if we have a valid emission data ID
   const hasValidEmissionDataId = emissionDataId && emissionDataId !== 'temp-emission-id' && emissionDataId.length > 10;
   
 
   const generateCertificate = async () => {
+    // Validation checks with user-friendly messages
     if (!userId) {
-      alert('Please login to generate certificate');
+      showNotification('error', 'Login Required', 'Please login to generate certificate');
       return;
     }
 
     if (!walletAddress) {
-      alert('Please link a Solana wallet to mint NFT certificate');
+      showNotification('warning', 'No Wallet Linked', 'Please link a Solana wallet in Settings to mint NFT certificates.');
+      return;
+    }
+
+    // Check if user has a connected wallet in browser
+    if (!wallets || wallets.length === 0) {
+      showNotification('warning', 'No Wallet Detected', 'Please connect a Solana wallet (Phantom, Solflare, etc.) to your browser.');
       return;
     }
 
@@ -70,11 +100,30 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
 
       console.log('🎨 Minting NFT certificate...');
 
-      // 2. Mint NFT on Solana
+      // 2. Get active wallet and validate
       const wallet = wallets[0];
       if (!wallet) {
         throw new Error('No wallet connected');
       }
+
+      const activeWalletAddress = wallet.address;
+      console.log('🔑 Active wallet:', activeWalletAddress);
+      console.log('🔑 Linked wallet:', walletAddress);
+
+      // IMPORTANT: Check if the active wallet matches the linked wallet
+      if (activeWalletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        showNotification(
+          'warning',
+          'Wallet Mismatch Detected',
+          `Your browser wallet: ${activeWalletAddress.slice(0, 8)}...${activeWalletAddress.slice(-6)}\n` +
+          `Your linked wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}\n\n` +
+          'Please switch to the wallet linked to your account, or link your current wallet in Settings.'
+        );
+        setIsGenerating(false);
+        return;
+      }
+
+      console.log('✅ Wallet verification passed');
 
       const certificateMetadata: CertificateMetadata = {
         certificateId,
@@ -85,7 +134,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       };
 
       const nftResult = await mintCertificateNFT(
-        walletAddress,
+        activeWalletAddress,
         certificateMetadata,
         async (txData: any) => {
           // Sign and send transaction with user's wallet
@@ -103,7 +152,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       // 3. Log certificate creation on-chain
       console.log('📝 Logging certificate on blockchain...');
       const logResult = await logCertificateOnChain(
-        walletAddress,
+        activeWalletAddress,
         {
           certificateId,
           dataHash,
@@ -137,6 +186,8 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
           title,
           totalEmissions: calculations.totalEmissions,
           breakdown,
+          processedData: calculations.processedData || [],
+          summary: calculations.summary || {},
           dataHash,
           blockchainTx: nftResult.transactionSignature,
           nftAddress: nftResult.nftAddress,
@@ -164,7 +215,32 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       onGenerate(result);
     } catch (error: any) {
       console.error('❌ Failed to create certificate:', error);
-      alert(`Failed to create certificate: ${error.message || 'Unknown error'}`);
+      
+      // User-friendly error messages
+      let title = 'Certificate Generation Failed';
+      let message = 'Failed to create certificate';
+      
+      if (error.message?.includes('User rejected')) {
+        title = 'Transaction Cancelled';
+        message = 'You rejected the transaction in your wallet.';
+      } else if (error.message?.includes('Insufficient funds')) {
+        title = 'Insufficient Funds';
+        message = 'You don\'t have enough SOL to pay for the transaction fee.\n\nPlease add some SOL to your wallet.';
+      } else if (error.message?.includes('not required to sign')) {
+        title = 'Wallet Mismatch';
+        message = 'The connected wallet doesn\'t match your linked wallet.\n\nPlease switch wallets or link your current wallet in Settings.';
+      } else if (error.message?.includes('Network')) {
+        title = 'Network Error';
+        message = 'Couldn\'t connect to Solana network.\n\nPlease check your internet connection and try again.';
+      } else if (error.message?.includes('timeout')) {
+        title = 'Transaction Timeout';
+        message = 'The transaction took too long.\n\nPlease try again.';
+      } else {
+        title = 'Error';
+        message = `${error.message || 'Unknown error'}\n\nPlease try again or contact support if the issue persists.`;
+      }
+      
+      showNotification('error', title, message);
     } finally {
       setIsGenerating(false);
     }
@@ -379,6 +455,16 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
           Copied to clipboard!
         </div>
       )}
+
+      {/* Notification Toast */}
+      <NotificationToast
+        isVisible={notification.isVisible}
+        onClose={() => setNotification(prev => ({ ...prev, isVisible: false }))}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+        duration={15000}
+      />
     </div>
   );
 }
