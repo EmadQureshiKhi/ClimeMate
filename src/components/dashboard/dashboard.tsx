@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,11 +9,38 @@ import { StatsCards } from './stats-cards';
 import { EmissionsChart } from './emissions-chart';
 import { RecentActivity } from './recent-activity';
 import { QuickActions } from './quick-actions';
-import { Leaf, TrendingDown, Award, ShoppingCart, Wallet } from 'lucide-react';
+import { Leaf, TrendingDown, Award, ShoppingCart, Wallet, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
 
 export function Dashboard() {
-  // Static demo data for the dashboard
+  const { isAuthenticated, userId } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
+
+  // Fetch user data when authenticated
+  useEffect(() => {
+    if (isAuthenticated && userId) {
+      fetchUserData();
+    }
+  }, [isAuthenticated, userId]);
+
+  const fetchUserData = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/dashboard/stats?userId=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUserData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Static demo data for non-authenticated users
   const staticStatsData = {
     totalEmissions: 1200000, // 1.2M kg
     offsetCredits: 850000, // 850K kg
@@ -23,8 +50,11 @@ export function Dashboard() {
     offsetsChange: 28.5,
   };
 
+  // Use real data if authenticated, otherwise use static data
+  const statsData = isAuthenticated && userData ? userData.stats : staticStatsData;
+
   // Static demo emissions data
-  const emissionsData = [
+  const staticEmissionsData = [
     { month: 'Jan', emissions: 2400, offsets: 1200, net: 1200 },
     { month: 'Feb', emissions: 2100, offsets: 1400, net: 700 },
     { month: 'Mar', emissions: 2800, offsets: 1600, net: 1200 },
@@ -34,7 +64,7 @@ export function Dashboard() {
   ];
 
   // Static demo recent activity data
-  const recentActivity = [
+  const staticRecentActivity = [
     {
       id: '1',
       type: 'certificate',
@@ -66,6 +96,10 @@ export function Dashboard() {
       txHash: '0x9876...5432',
     },
   ];
+
+  // Use real data if authenticated, otherwise use static data
+  const emissionsData = isAuthenticated && userData ? userData.emissions : staticEmissionsData;
+  const recentActivity = isAuthenticated && userData ? userData.recentActivity : staticRecentActivity;
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
@@ -117,12 +151,23 @@ export function Dashboard() {
       {/* Stats Cards */}
       <div className="space-y-4">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Platform Impact Overview</h2>
+          <h2 className="text-2xl font-bold mb-2">
+            {isAuthenticated ? 'Your Impact Overview' : 'Platform Impact Overview'}
+          </h2>
           <p className="text-muted-foreground">
-            See how organizations worldwide are making a difference
+            {isAuthenticated 
+              ? 'Track your personal carbon footprint and offset progress'
+              : 'See how organizations worldwide are making a difference'
+            }
           </p>
         </div>
-        <StatsCards data={staticStatsData} />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <StatsCards data={statsData} />
+        )}
       </div>
 
       {/* Main Content Grid */}
@@ -188,9 +233,14 @@ export function Dashboard() {
       {/* Recent Activity */}
       <div className="space-y-4">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Platform Activity</h2>
+          <h2 className="text-2xl font-bold mb-2">
+            {isAuthenticated ? 'Your Recent Activity' : 'Platform Activity'}
+          </h2>
           <p className="text-muted-foreground">
-            Recent activities from our community of sustainable organizations
+            {isAuthenticated
+              ? 'Your latest certificates, purchases, and offsets'
+              : 'Recent activities from our community of sustainable organizations'
+            }
           </p>
         </div>
         <RecentActivity data={recentActivity} />
