@@ -60,6 +60,8 @@ model Certificate {
   title           String
   totalEmissions  Float
   breakdown       Json
+  processedData   Json?    // Detailed emission activities
+  summary         Json?    // Summary data (scope, categories, etc.)
   status          String   @default("verified")
   issueDate       DateTime @default(now())
   validUntil      DateTime
