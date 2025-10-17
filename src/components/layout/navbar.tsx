@@ -19,7 +19,8 @@ import {
   LogOut,
   User,
   Wallet,
-  Settings
+  Settings,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -99,6 +100,7 @@ const navigation = [
   { name: 'Marketplace', href: '/marketplace', icon: ShoppingCart },
   { name: 'GHG Calculator', href: '/ghg-calculator', icon: Calculator },
   { name: 'SEMA Tool', href: '/sema', icon: Target },
+  { name: 'Verify', href: '/verify', icon: ShieldCheck },
 ];
 
 export function Navbar() {
