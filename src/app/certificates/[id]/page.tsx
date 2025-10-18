@@ -6,7 +6,7 @@ export default async function CertificateDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  
+
   return (
     <div>
       <div className="container mx-auto px-4 py-8">

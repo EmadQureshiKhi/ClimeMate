@@ -133,21 +133,25 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
         issueDate: new Date().toISOString(),
       };
 
-      const nftResult = await mintCertificateNFT(
-        activeWalletAddress,
-        certificateMetadata,
-        async (txData: any) => {
-          // Sign and send transaction with user's wallet
-          const result = await wallet.signAndSendTransaction(txData);
-          return result;
-        }
-      );
+      // Mint compressed NFT via backend
+      console.log('🎨 Minting compressed NFT via backend...');
+      const nftResponse = await fetch('/api/nft/mint-compressed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          certificateData: certificateMetadata,
+          userWallet: activeWalletAddress,
+          userId,
+        }),
+      });
 
-      if (!nftResult.success) {
-        throw new Error(nftResult.error || 'Failed to mint NFT');
+      const nftResult = await nftResponse.json();
+
+      if (!nftResponse.ok || !nftResult.success) {
+        throw new Error(nftResult.error || nftResult.details || 'Failed to mint NFT');
       }
 
-      console.log('✅ NFT minted successfully:', nftResult);
+      console.log('✅ Compressed NFT minted successfully:', nftResult);
 
       // 3. Log certificate creation on-chain
       console.log('📝 Logging certificate on blockchain...');
