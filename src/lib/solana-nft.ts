@@ -84,7 +84,10 @@ export async function uploadMetadata(metadata: any): Promise<string> {
 
 /**
  * Mint NFT certificate on Solana
- * This is a simplified version - in production, you'd use Metaplex
+ * Creates a transaction with certificate data
+ * Note: Full Metaplex NFT minting requires additional setup and is complex with Privy
+ * This creates a verifiable on-chain record. For production, consider using a backend service
+ * to mint actual NFTs with Metaplex and transfer them to the user.
  */
 export async function mintCertificateNFT(
   walletAddress: string,
@@ -92,30 +95,47 @@ export async function mintCertificateNFT(
   signAndSendTransaction: (transaction: any) => Promise<{ signature: string }>
 ): Promise<NFTMintResult> {
   try {
-    console.log('🎨 Starting NFT mint process...');
+    console.log('🎨 Starting certificate NFT process...');
     
     // Create metadata
     const metadata = createCertificateMetadata(certificateData);
     console.log('📝 Metadata created:', metadata);
     
-    // Upload metadata (mock for now)
+    // Upload metadata
     const metadataUri = await uploadMetadata(metadata);
     console.log('📤 Metadata uploaded:', metadataUri);
     
-    // For demo purposes, we'll create a simple transaction
-    // In production, use Metaplex to mint actual NFT
     const connection = new Connection(SOLANA_RPC, 'confirmed');
     
-    // Create a simple memo transaction (placeholder for NFT mint)
+    // Create a transaction with memo containing NFT metadata
+    // This creates an on-chain record that can be verified
+    const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+    
+    const memoData = JSON.stringify({
+      type: 'NFT_CERTIFICATE',
+      certificateId: certificateData.certificateId,
+      name: metadata.name,
+      symbol: metadata.symbol,
+      uri: metadataUri,
+      timestamp: new Date().toISOString(),
+    });
+    
+    const memoInstruction = new TransactionInstruction({
+      keys: [],
+      programId: MEMO_PROGRAM_ID,
+      data: Buffer.from(memoData, 'utf-8'),
+    });
+    
+    // Add a small transfer to make it a valid transaction
     const transaction = new Transaction().add(
+      memoInstruction,
       SystemProgram.transfer({
         fromPubkey: new PublicKey(walletAddress),
-        toPubkey: new PublicKey(walletAddress), // Self-transfer for demo
-        lamports: 1000, // Small amount for demo (0.000001 SOL)
+        toPubkey: new PublicKey(walletAddress),
+        lamports: 1000, // 0.000001 SOL
       })
     );
     
-    // Get recent blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = new PublicKey(walletAddress);
@@ -123,7 +143,6 @@ export async function mintCertificateNFT(
     
     console.log('📦 Transaction created, serializing...');
     
-    // Serialize transaction for Privy wallet
     const serializedTransaction = transaction.serialize({
       requireAllSignatures: false,
       verifySignatures: false,
@@ -131,8 +150,6 @@ export async function mintCertificateNFT(
     
     console.log('✍️ Signing and sending transaction...');
     
-    // Sign and send transaction using Privy wallet
-    // Privy's signAndSendTransaction already sends the transaction to the network
     const result = await signAndSendTransaction({
       transaction: serializedTransaction,
       chain: `solana:${SOLANA_NETWORK}`,
@@ -140,11 +157,10 @@ export async function mintCertificateNFT(
     
     console.log('✅ Transaction result:', result);
     
-    // Extract and convert signature - Privy returns it as a Buffer
+    // Extract signature
     let signature: string;
     
     if (typeof result === 'string') {
-      // Already a string
       signature = result;
     } else if (result && typeof result === 'object') {
       const sig = (result as any).signature;
@@ -152,12 +168,10 @@ export async function mintCertificateNFT(
       if (typeof sig === 'string') {
         signature = sig;
       } else if (sig && typeof sig === 'object' && sig.type === 'Buffer' && Array.isArray(sig.data)) {
-        // Convert Buffer to base58 string (Solana signature format)
         const buffer = Buffer.from(sig.data);
         signature = bs58.encode(buffer);
         console.log('✅ Converted Buffer to base58 signature:', signature);
       } else if (Buffer.isBuffer(sig)) {
-        // Direct Buffer object
         signature = bs58.encode(sig);
         console.log('✅ Converted Buffer to base58 signature:', signature);
       } else {
@@ -171,30 +185,26 @@ export async function mintCertificateNFT(
       throw new Error(`Failed to extract signature from result: ${JSON.stringify(result)}`);
     }
     
-    console.log('✅ Transaction signature:', signature);
-    
-    // Transaction is already sent and confirmed by Privy
-    // No need to manually confirm
-    console.log('✅ Transaction completed!');
-    
-    // For now, use the transaction signature as the NFT identifier
-    // In production with Metaplex, this would be the actual mint address
-    const nftAddress = signature;
+    console.log('✅ Certificate NFT transaction completed!');
+    console.log('📝 Transaction:', signature);
+    console.log('💡 Note: This creates an on-chain record. For visual NFTs in wallets, consider using a backend minting service.');
     
     return {
       success: true,
-      nftAddress,
+      nftAddress: signature, // Using transaction signature as identifier
       transactionSignature: signature,
       metadataUri,
     };
   } catch (error: any) {
-    console.error('❌ Error minting NFT:', error);
+    console.error('❌ Error creating certificate NFT:', error);
     return {
       success: false,
-      error: error.message || 'Failed to mint NFT',
+      error: error.message || 'Failed to create certificate NFT',
     };
   }
 }
+
+
 
 /**
  * Get Solana explorer URL for transaction
