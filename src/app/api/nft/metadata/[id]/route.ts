@@ -39,11 +39,16 @@ export async function GET(
     const categories = summary?.categories || 0;
     const totalRows = summary?.totalRows || 0;
 
+    // Check if this is a GHG Calculator certificate
+    const isGHGCalc = certificateId.startsWith('GHG-CALC-');
+    
     // Create NFT metadata with comprehensive attributes
     const metadata = {
-      name: `Carbon Certificate ${certificateId}`,
+      name: isGHGCalc ? `GHG Calculator Certificate` : `Carbon Certificate ${certificateId}`,
       symbol: 'CARBON',
-      description: `Verified carbon footprint certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`,
+      description: isGHGCalc 
+        ? `GHG Calculator verified certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`
+        : `Verified carbon footprint certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`,
       image: 'https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png',
       external_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificates/${certificateId}`,
       attributes: [
@@ -51,6 +56,10 @@ export async function GET(
           trait_type: 'Certificate ID',
           value: certificateId,
         },
+        ...(isGHGCalc ? [{
+          trait_type: 'Certificate Type',
+          value: 'GHG Calculator',
+        }] : []),
         {
           trait_type: 'Total Emissions (kg CO₂e)',
           value: certificate.totalEmissions.toFixed(2),
@@ -78,27 +87,12 @@ export async function GET(
           value: totalRows.toString(),
           display_type: 'number',
         },
-        // Add breakdown by category if available
-        ...(breakdown?.electricity ? [{
-          trait_type: 'Electricity (kg CO₂e)',
-          value: breakdown.electricity.toFixed(2),
+        // Add breakdown by category - handle both CSV upload and GHG Calculator formats
+        ...Object.entries(breakdown || {}).slice(0, 5).map(([category, emissions]: [string, any]) => ({
+          trait_type: `${category} (kg CO₂e)`,
+          value: Number(emissions).toFixed(2),
           display_type: 'number',
-        }] : []),
-        ...(breakdown?.['natural gas'] ? [{
-          trait_type: 'Natural Gas (kg CO₂e)',
-          value: breakdown['natural gas'].toFixed(2),
-          display_type: 'number',
-        }] : []),
-        ...(breakdown?.['petrol car'] ? [{
-          trait_type: 'Transport (kg CO₂e)',
-          value: (breakdown['petrol car'] + (breakdown['domestic flight'] || 0)).toFixed(2),
-          display_type: 'number',
-        }] : []),
-        ...(breakdown?.['landfill waste'] ? [{
-          trait_type: 'Waste (kg CO₂e)',
-          value: breakdown['landfill waste'].toFixed(2),
-          display_type: 'number',
-        }] : []),
+        })),
       ],
     };
 
