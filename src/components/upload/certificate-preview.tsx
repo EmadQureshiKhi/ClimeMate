@@ -133,6 +133,37 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
         issueDate: new Date().toISOString(),
       };
 
+      // IMPORTANT: Save certificate to database FIRST so metadata endpoint works immediately
+      console.log('💾 Pre-saving certificate to database...');
+      const preSaveResponse = await fetch('/api/certificates/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          emissionDataId,
+          certificateId,
+          title,
+          totalEmissions: calculations.totalEmissions,
+          breakdown,
+          processedData: calculations.processedData || [],
+          summary: calculations.summary || {},
+          dataHash,
+          blockchainTx: null, // Will update after minting
+          nftAddress: null,
+          metadataUri: null,
+          logTransactionSignature: null,
+        }),
+      });
+
+      if (!preSaveResponse.ok) {
+        throw new Error('Failed to pre-save certificate to database');
+      }
+
+      const { certificate: preSavedCertificate } = await preSaveResponse.json();
+      console.log('✅ Certificate pre-saved to database:', preSavedCertificate.id);
+
       // Mint compressed NFT via backend
       console.log('🎨 Minting compressed NFT via backend...');
       const nftResponse = await fetch('/api/nft/mint-compressed', {
@@ -177,22 +208,14 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
         console.log('✅ Certificate logged on-chain:', logResult.signature);
       }
 
-      // 4. Save certificate to database
-      const response = await fetch('/api/certificates/create', {
-        method: 'POST',
+      // 4. Update certificate with blockchain data
+      console.log('🔄 Updating certificate with blockchain data...');
+      const updateResponse = await fetch(`/api/certificates/${preSavedCertificate.id}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId,
-          emissionDataId,
-          certificateId,
-          title,
-          totalEmissions: calculations.totalEmissions,
-          breakdown,
-          processedData: calculations.processedData || [],
-          summary: calculations.summary || {},
-          dataHash,
           blockchainTx: nftResult.transactionSignature,
           nftAddress: nftResult.nftAddress,
           metadataUri: nftResult.metadataUri,
@@ -200,12 +223,14 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to save certificate to database');
+      let savedCertificate = preSavedCertificate;
+      if (updateResponse.ok) {
+        const { certificate: updatedCertificate } = await updateResponse.json();
+        savedCertificate = updatedCertificate;
+        console.log('✅ Certificate updated with blockchain data');
+      } else {
+        console.warn('⚠️ Failed to update certificate, using pre-saved version');
       }
-
-      const { certificate: savedCertificate } = await response.json();
-      console.log('✅ Certificate saved to database:', savedCertificate);
 
       // 5. Set certificate state
       const result = {
