@@ -106,11 +106,18 @@ export async function POST(request: NextRequest) {
     // Mint compressed NFT to user
     console.log('🎨 Minting compressed NFT to user...');
     
+    // NFT name must be max 32 characters
+    const nftName = certificateData.certificateId.startsWith('GHG-CALC-') 
+      ? `GHG Cert ${certificateData.certificateId.substring(9, 22)}`  // "GHG Cert 1761162690888" = 23 chars
+      : `Carbon ${certificateData.certificateId.substring(4, 20)}`;    // "Carbon 1761162690888" = 20 chars
+    
+    console.log('🏷️ NFT Name:', nftName, `(${nftName.length} chars)`);
+    
     const mintTx = mintV1(umi, {
       leafOwner: userWallet as any,
       merkleTree: merkleTreeAddress as any,
       metadata: {
-        name: `Carbon Cert ${certificateData.certificateId}`,
+        name: nftName,
         uri: metadataUri,
         sellerFeeBasisPoints: 0,
         collection: null,
