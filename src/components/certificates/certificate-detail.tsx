@@ -538,7 +538,10 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                       </div>
                       <div>
                         <h4 className="font-semibold text-lg">{entry.fuelType || entry.activity}</h4>
-                        <Badge variant={entry.scope === 'Scope 1' ? 'default' : 'secondary'} className="text-xs">
+                        <Badge 
+                          variant={entry.scope === 'Scope 1' ? 'default' : 'default'} 
+                          className={`text-xs ${entry.scope === 'Scope 1' ? 'bg-blue-600' : 'bg-green-600'}`}
+                        >
                           {entry.scope}
                         </Badge>
                       </div>
@@ -556,7 +559,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 text-sm">
                     <div>
                       <label className="text-muted-foreground">Category:</label>
-                      <p className="font-medium">{entry.category}</p>
+                      <p className="font-medium">{entry.category || 'Other'}</p>
                     </div>
                     {entry.equipmentType && (
                       <div>
@@ -651,24 +654,24 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Organization</label>
-                  <p className="font-medium">{certificate.summary?.orgName || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.questionnaire?.orgName || certificate.summary?.orgName || 'Not specified'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Boundary Approach</label>
-                  <p className="font-medium">{certificate.summary?.boundaryApproach || 'Not specified'}</p>
-                  {certificate.summary?.controlSubtype && (
-                    <p className="text-sm text-muted-foreground">→ {certificate.summary.controlSubtype}</p>
+                  <p className="font-medium">{certificate.summary?.questionnaire?.boundaryApproach || certificate.summary?.boundaryApproach || 'Not specified'}</p>
+                  {(certificate.summary?.questionnaire?.controlSubtype || certificate.summary?.controlSubtype) && (
+                    <p className="text-sm text-muted-foreground">→ {certificate.summary?.questionnaire?.controlSubtype || certificate.summary?.controlSubtype}</p>
                   )}
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Operational Boundary</label>
-                  <p className="font-medium">{certificate.summary?.operationalBoundary || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.questionnaire?.operationalBoundary || certificate.summary?.operationalBoundary || 'Not specified'}</p>
                 </div>
               </div>
               <div className="space-y-3">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Emission Sources</label>
-                  <p className="font-medium">{certificate.summary?.emissionSources || 'Not specified'}</p>
+                  <p className="font-medium">{certificate.summary?.questionnaire?.emissionSources || certificate.summary?.emissionSources || 'Not specified'}</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Total Activities</label>
