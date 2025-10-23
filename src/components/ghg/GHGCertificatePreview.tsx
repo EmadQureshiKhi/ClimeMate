@@ -18,6 +18,9 @@ import {
 import { format } from 'date-fns';
 import CryptoJS from 'crypto-js';
 import { QuestionnaireData, EmissionEntry } from '@/types/ghg';
+import { usePrivy } from '@privy-io/react-auth';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
 
 interface GHGCertificatePreviewProps {
   questionnaire: QuestionnaireData;
@@ -49,40 +52,24 @@ export function GHGCertificatePreview({
   const [isGenerating, setIsGenerating] = useState(false);
   const [certificate, setCertificate] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const { user, authenticated } = usePrivy();
+  const { wallets } = useWallets();
+  const walletAddress = wallets[0]?.address;
 
   const generateCertificate = async () => {
+    if (!authenticated || !walletAddress) {
+      alert('Please connect your Solana wallet first');
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
-      // 1. Mock saving the GHG calculator session data
-      const emissionDataResult = {
-        id: `emission-${Date.now()}`,
-        file_name: `GHG_Calculator_${questionnaire.orgName || 'Session'}_${format(new Date(), 'yyyy-MM-dd')}.json`,
-        total_emissions: totalEmissions,
-        breakdown: calculations.categoryBreakdown,
-        raw_data: [questionnaire],
-        processed_data: entries,
-        status: 'completed'
-      };
+      console.log('🎨 Generating GHG Calculator certificate...');
 
-      // 2. Generate certificate data structure
-      const certificateData: {
-        certificate_id: string;
-        title: string;
-        total_emissions: number;
-        breakdown: Record<string, number>;
-        blockchain_tx?: string;
-        hcs_message_id?: string;
-        ipfs_cid?: string;
-        hedera_nft_serial?: number;
-        data_hash?: string;
-      } = {
-        certificate_id: `GHG-CALC-${Date.now()}`,
-        title: `${questionnaire.orgName || 'Organization'} - GHG Calculator Certificate - ${format(new Date(), 'MMM yyyy')}`,
-        total_emissions: totalEmissions,
-        breakdown: calculations.categoryBreakdown,
-        data_hash: undefined,
-      };
+      // 1. Generate certificate ID and data hash
+      const certificateId = `GHG-CALC-${Date.now()}`;
+      const title = `${questionnaire.orgName || 'Organization'} - GHG Calculator Certificate - ${format(new Date(), 'MMM yyyy')}`;
 
       // Generate comprehensive data hash from GHG calculator session
       const hashData = {
@@ -108,20 +95,151 @@ export function GHGCertificatePreview({
         timestamp: new Date().toISOString()
       };
 
-      certificateData.data_hash = CryptoJS.SHA256(JSON.stringify(hashData)).toString();
+      const dataHash = CryptoJS.SHA256(JSON.stringify(hashData)).toString();
 
-      // 3. Mock certificate creation
+      // 2. Pre-save certificate to database (so metadata endpoint works immediately)
+      console.log('💾 Pre-saving certificate to database...');
+      const emissionDataId = `emission-${Date.now()}`;
+      
+      // Include questionnaire data in processedData for storage
+      const enrichedProcessedData = entries.map(entry => ({
+        ...entry,
+        questionnaire: {
+          orgName: questionnaire.orgName,
+          boundaryApproach: questionnaire.boundaryApproach,
+          controlSubtype: questionnaire.controlSubtype,
+          operationalBoundary: questionnaire.operationalBoundary,
+          emissionSources: questionnaire.emissionSources,
+        }
+      }));
+      
+      const preSaveResponse = await fetch('/api/certificates/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          emissionDataId,
+          certificateId,
+          title,
+          totalEmissions,
+          breakdown: calculations.categoryBreakdown,
+          processedData: enrichedProcessedData,
+          summary: {
+            ...calculations.summary,
+            questionnaire: questionnaire, // Add questionnaire to summary
+          },
+          dataHash,
+          blockchainTx: null,
+          nftAddress: null,
+          metadataUri: null,
+          logTransactionSignature: null,
+        }),
+      });
+
+      if (!preSaveResponse.ok) {
+        throw new Error('Failed to pre-save certificate to database');
+      }
+
+      const { certificate: preSavedCertificate } = await preSaveResponse.json();
+      console.log('✅ Certificate pre-saved:', preSavedCertificate.id);
+
+      // 3. Mint compressed NFT
+      console.log('🎨 Minting compressed NFT...');
+      const nftResponse = await fetch('/api/nft/mint-compressed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          certificateData: {
+            certificateId,
+            title,
+            totalEmissions,
+            breakdown: calculations.categoryBreakdown,
+            issueDate: new Date().toISOString(),
+          },
+          userWallet: walletAddress,
+          userId: user?.id,
+        }),
+      });
+
+      const nftResult = await nftResponse.json();
+
+      if (!nftResponse.ok || !nftResult.success) {
+        throw new Error(nftResult.error || nftResult.details || 'Failed to mint NFT');
+      }
+
+      console.log('✅ NFT minted:', nftResult.transactionSignature);
+
+      // 4. Log certificate on-chain
+      console.log('📝 Logging certificate on blockchain...');
+      let logSignature = null;
+
+      try {
+        // Get the first wallet (same as upload flow)
+        const wallet = wallets[0];
+        
+        if (!wallet) {
+          console.warn('⚠️ No wallet found, skipping memo log');
+        } else {
+          const logResult = await logCertificateOnChain(
+            walletAddress,
+            {
+              certificateId,
+              dataHash,
+              totalEmissions,
+              breakdown: calculations.categoryBreakdown,
+              timestamp: new Date().toISOString(),
+            },
+            async (txData: any) => {
+              const result = await wallet.signAndSendTransaction(txData);
+              return result;
+            }
+          );
+
+          if (logResult.success) {
+            logSignature = logResult.signature;
+            console.log('✅ Certificate logged on-chain:', logSignature);
+          } else {
+            console.warn('⚠️ Failed to log certificate on-chain:', logResult.error);
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to log certificate on-chain:', error);
+        // Don't fail the whole process - memo log is optional
+      }
+
+      // 5. Update certificate with blockchain data
+      console.log('🔄 Updating certificate with blockchain data...');
+      const updateResponse = await fetch(`/api/certificates/${preSavedCertificate.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blockchainTx: nftResult.transactionSignature,
+          nftAddress: nftResult.nftAddress,
+          metadataUri: nftResult.metadataUri,
+          logTransactionSignature: logSignature,
+        }),
+      });
+
+      let finalCertificate = preSavedCertificate;
+      if (updateResponse.ok) {
+        const { certificate: updatedCertificate } = await updateResponse.json();
+        finalCertificate = updatedCertificate;
+        console.log('✅ Certificate updated with blockchain data');
+      }
+
+      // 6. Set certificate state
       const result = {
-        id: `cert-${Date.now()}`,
-        ...certificateData,
-        issue_date: new Date().toISOString().split('T')[0],
-        valid_until: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        status: 'verified',
-        created_at: new Date().toISOString()
+        ...finalCertificate,
+        nftAddress: nftResult.nftAddress,
+        transactionSignature: nftResult.transactionSignature,
+        metadataUri: nftResult.metadataUri,
+        logTransactionSignature: logSignature,
       };
 
       setCertificate(result);
       onGenerate(result);
+      
+      console.log('🎉 Certificate generation complete!');
     } catch (error) {
       let errorMessage = 'Unknown error occurred';
       if (error instanceof Error) {
@@ -132,6 +250,7 @@ export function GHGCertificatePreview({
         errorMessage = String(error);
       }
       console.error(`Failed to create certificate: ${errorMessage}`);
+      alert(`Failed to generate certificate: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }
@@ -310,25 +429,89 @@ Generated: ${new Date().toLocaleString()}
           {/* Success Actions */}
           {certificate && (
             <div className="space-y-4">
-              <Alert>
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  GHG Calculator certificate generated successfully! Your emissions data has been verified and recorded. Blockchain verification coming soon!
+              <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800 dark:text-green-200">
+                  Certificate generated successfully! Your emissions data has been verified and recorded on Solana blockchain.
                 </AlertDescription>
               </Alert>
 
-              <div className="flex flex-wrap gap-4 justify-center">
-                <Button onClick={downloadCertificatePDF} variant="outline">
+              {/* Blockchain Verification */}
+              {certificate.transactionSignature && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      Blockchain Verification
+                    </CardTitle>
+                    <CardDescription>
+                      Your certificate has been permanently recorded on Solana blockchain
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-start justify-between p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                          NFT Mint Transaction
+                        </p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300 font-mono break-all">
+                          {certificate.transactionSignature}
+                        </p>
+                      </div>
+                      <a
+                        href={`https://explorer.solana.com/tx/${certificate.transactionSignature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-3 flex-shrink-0"
+                      >
+                        <Button size="sm" variant="outline" className="h-8">
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          View
+                        </Button>
+                      </a>
+                    </div>
+
+                    {certificate.logTransactionSignature && (
+                      <div className="flex items-start justify-between p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">
+                            Audit Log Transaction
+                          </p>
+                          <p className="text-xs text-purple-700 dark:text-purple-300 font-mono break-all">
+                            {certificate.logTransactionSignature}
+                          </p>
+                        </div>
+                        <a
+                          href={`https://explorer.solana.com/tx/${certificate.logTransactionSignature}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-3 flex-shrink-0"
+                        >
+                          <Button size="sm" variant="outline" className="h-8">
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                        </a>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex flex-wrap gap-3 justify-center">
+                <Button onClick={downloadCertificatePDF} variant="outline" size="lg">
                   <Download className="h-4 w-4 mr-2" />
                   Download Certificate
                 </Button>
-                <Button variant="outline">
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share Certificate
+                <Button variant="outline" size="lg" onClick={() => copyToClipboard(certificate.certificateId)}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Certificate ID
                 </Button>
-                <Button variant="outline" disabled>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Blockchain Explorer (Soon)
+                <Button asChild size="lg">
+                  <a href={`/certificates/${certificate.id}`}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    View Certificate Page
+                  </a>
                 </Button>
               </div>
             </div>
@@ -355,7 +538,10 @@ Generated: ${new Date().toLocaleString()}
                     </div>
                     <div>
                       <h4 className="font-semibold text-lg">{entry.fuelType}</h4>
-                      <Badge variant={entry.scope === 'Scope 1' ? 'default' : 'secondary'} className="text-xs">
+                      <Badge 
+                        variant="default"
+                        className={`text-xs ${entry.scope === 'Scope 1' ? 'bg-blue-600' : 'bg-green-600'}`}
+                      >
                         {entry.scope}
                       </Badge>
                     </div>
@@ -371,7 +557,7 @@ Generated: ${new Date().toLocaleString()}
                 <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 text-sm">
                   <div>
                     <label className="text-muted-foreground">Category:</label>
-                    <p className="font-medium">{entry.category}</p>
+                    <p className="font-medium">{entry.category || 'Other'}</p>
                   </div>
                   {entry.equipmentType && (
                     <div>
