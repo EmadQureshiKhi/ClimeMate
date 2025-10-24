@@ -25,6 +25,7 @@ model User {
   carbonCredits   CarbonCredit[]
   ghgCalculations GHGCalculation[]
   semaAssessments SEMAAssessment[]
+  semaClients     SEMAClient[]
 
   @@index([privyId])
   @@index([email])
@@ -146,4 +147,159 @@ model SEMAAssessment {
 
   @@index([userId])
   @@index([clientName])
+}
+
+// SEMA Clients
+model SEMAClient {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  industry    String
+  size        String   // Small, Medium, Large, Enterprise
+  status      String   @default("active") // active, inactive, demo
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stakeholders SEMAStakeholder[]
+  blockchainLogs SEMABlockchainLog[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// SEMA Stakeholders
+model SEMAStakeholder {
+  id                        String   @id @default(cuid())
+  clientId                  String
+  name                      String
+  category                  String   // Internal, External
+  stakeholderType           String?
+  dependencyEconomic        Int      @default(3)
+  dependencySocial          Int      @default(3)
+  dependencyEnvironmental   Int      @default(3)
+  influenceEconomic         Int      @default(3)
+  influenceSocial           Int      @default(3)
+  influenceEnvironmental    Int      @default(3)
+  populationSize            Int      @default(0)
+  totalScore                Int      @default(18)
+  dependencyCategory        String   @default("Medium")
+  influenceCategory         String   @default("Medium")
+  isPriority                Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  client SEMAClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([isPriority])
+}
+
+// SEMA Blockchain Logs
+model SEMABlockchainLog {
+  id                    String   @id @default(cuid())
+  clientId              String
+  action                String   // client_added, client_updated, client_deleted, stakeholder_added, etc.
+  dataHash              String
+  transactionSignature  String?
+  status                String   @default("pending") // pending, success, error
+  error                 String?
+  metadata              Json?    // Additional data about the action
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  client SEMAClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// SEMA Sample Parameters
+model SEMASampleParameters {
+  id                  String   @id @default(cuid())
+  clientId            String   @unique
+  confidenceLevel     Float    @default(0.95)
+  marginError         Float    @default(0.05)
+  populationProportion Float   @default(0.5)
+  zScore              Float    @default(1.96)
+  baseSampleSize      Int      @default(384)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+// SEMA Material Topics (External Materiality)
+model SEMAMaterialTopic {
+  id            String   @id @default(cuid())
+  clientId      String
+  name          String
+  description   String?
+  category      String   // Economic, Environmental, Social
+  griCode       String?
+  averageScore  Float    @default(0)
+  responseCount Int      @default(0)
+  isMaterial    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  responses SEMAQuestionnaireResponse[]
+
+  @@index([clientId])
+  @@index([isMaterial])
+}
+
+// SEMA Internal Topics (Internal Materiality)
+model SEMAInternalTopic {
+  id           String   @id @default(cuid())
+  clientId     String
+  name         String
+  description  String?
+  category     String   // Economic, Environmental, Social
+  severity     Int      @default(3)
+  likelihood   Int      @default(3)
+  significance Int      @default(9)
+  isMaterial   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([isMaterial])
+}
+
+// SEMA Questionnaire Responses
+model SEMAQuestionnaireResponse {
+  id              String   @id @default(cuid())
+  topicId         String
+  stakeholderType String
+  respondentName  String?
+  score           Int
+  comments        String?
+  responseTime    Int?     // Time taken to respond in seconds
+  createdAt       DateTime @default(now())
+
+  topic SEMAMaterialTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([stakeholderType])
+}
+
+// SEMA Reports
+model SEMAReport {
+  id              String   @id @default(cuid())
+  clientId        String
+  title           String
+  reportType      String   // materiality_assessment, stakeholder_engagement, full_sema
+  materialTopics  Json     @default("[]")
+  griDisclosures  Json     @default("{}")
+  processSummary  Json     @default("{}")
+  status          String   @default("draft") // draft, final, published
+  generatedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([status])
 }
