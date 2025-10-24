@@ -13,10 +13,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useSema, SemaStakeholder } from './sema-context';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { Users, Plus, CreditCard as Edit, Trash2, TrendingUp, Target, AlertCircle, Info, Building, Heart, ShoppingCart, MapPin, Truck, Shield } from 'lucide-react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 // --- Add this type for color keys ---
 type IconColorKey = 'blue' | 'green' | 'purple' | 'orange' | 'teal' | 'red' | 'yellow' | 'pink' | 'cyan' | 'amber';
@@ -179,9 +193,25 @@ export default function StakeholderManagement() {
     deleteStakeholder
   } = useSema();
   const { toast } = useToast();
+  const { wallets } = useWallets();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingStakeholder, setEditingStakeholder] = useState<SemaStakeholder | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [stakeholderToDelete, setStakeholderToDelete] = useState<SemaStakeholder | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -195,6 +225,97 @@ export default function StakeholderManagement() {
     influence_environmental: 3,
     population_size: 0
   });
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, stakeholderData: any) => {
+    if (!wallets || wallets.length === 0 || !activeClient) {
+      console.warn('No wallet connected or no active client, skipping blockchain log');
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      // Create detailed audit log data
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Stakeholder Management',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: activeClient.id,
+          clientName: activeClient.name,
+          stakeholderId: stakeholderData.id,
+          stakeholderName: stakeholderData.name,
+          category: stakeholderData.category,
+          stakeholderType: stakeholderData.stakeholder_type || stakeholderData.stakeholderType,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      // Add pending log
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      // Log to Solana
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        // Update log with success
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+
+        console.log('✅ Action logged to Solana:', logResult.signature);
+      } else {
+        // Update log with error
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      
+      // Update log with error
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -234,8 +355,20 @@ export default function StakeholderManagement() {
     e.preventDefault();
     if (!activeClient) return;
 
+    // Check if demo client
+    if (activeClient.status === 'demo') {
+      toast({
+        title: "Demo Client",
+        description: "This is a demo client. Please add your own client to make changes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
+      const action = editingStakeholder ? 'stakeholder_updated' : 'stakeholder_added';
+      
       if (editingStakeholder) {
         await updateStakeholder(editingStakeholder.id, formData);
 
@@ -243,12 +376,27 @@ export default function StakeholderManagement() {
           title: "Stakeholder Updated",
           description: `${formData.name} has been updated successfully.`,
         });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          id: editingStakeholder.id,
+          name: formData.name,
+          category: formData.category,
+          stakeholder_type: formData.stakeholder_type,
+        });
       } else {
         await addStakeholder(formData);
 
         toast({
           title: "Stakeholder Added",
           description: `${formData.name} has been added successfully.`,
+        });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          name: formData.name,
+          category: formData.category,
+          stakeholder_type: formData.stakeholder_type,
         });
       }
 
@@ -264,15 +412,38 @@ export default function StakeholderManagement() {
     }
   };
 
-  const handleDelete = async (stakeholder: SemaStakeholder) => {
-    if (!confirm(`Are you sure you want to delete ${stakeholder.name}?`)) return;
+  const handleDelete = (stakeholder: SemaStakeholder) => {
+    // Check if demo client
+    if (activeClient?.status === 'demo') {
+      toast({
+        title: "Demo Client",
+        description: "This is a demo client. Please add your own client to make changes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setStakeholderToDelete(stakeholder);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!stakeholderToDelete) return;
 
     try {
-      await deleteStakeholder(stakeholder.id);
+      await deleteStakeholder(stakeholderToDelete.id);
 
       toast({
         title: "Stakeholder Deleted",
-        description: `${stakeholder.name} has been deleted.`,
+        description: `${stakeholderToDelete.name} has been deleted.`,
+      });
+      
+      // Log to blockchain
+      await logToBlockchain('stakeholder_deleted', {
+        id: stakeholderToDelete.id,
+        name: stakeholderToDelete.name,
+        category: stakeholderToDelete.category,
+        stakeholder_type: stakeholderToDelete.stakeholder_type,
       });
     } catch (error: any) {
       toast({
@@ -280,6 +451,9 @@ export default function StakeholderManagement() {
         description: error.message || "Failed to delete stakeholder",
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setStakeholderToDelete(null);
     }
   };
 
@@ -302,6 +476,9 @@ export default function StakeholderManagement() {
   const priorityStakeholders = stakeholders.filter(s => s.is_priority);
   const highInfluenceStakeholders = stakeholders.filter(s => s.influence_category === 'High');
   const lowPriorityStakeholders = stakeholders.filter(s => !s.is_priority);
+
+  // Check if demo client
+  const isDemoClient = activeClient?.status === 'demo';
 
   return (
     <div className="space-y-6">
@@ -706,6 +883,15 @@ export default function StakeholderManagement() {
         </CardContent>
       </Card>
 
+      {/* Blockchain Verification - Only show for non-demo clients */}
+      {!isDemoClient && (
+        <BlockchainVerificationCard 
+          logs={blockchainLogs}
+          isLogging={isLoggingToBlockchain}
+          module="Stakeholder Management"
+        />
+      )}
+
       {/* Stakeholder Descriptions */}
       <div className="space-y-8">
         {/* Blue Gradient Header Container */}
@@ -808,6 +994,28 @@ export default function StakeholderManagement() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Stakeholder</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{stakeholderToDelete?.name}</strong>? 
+              This action cannot be undone and will remove this stakeholder from your assessment.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
