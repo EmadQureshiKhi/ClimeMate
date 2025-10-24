@@ -16,6 +16,10 @@ import {
   Info,
   BarChart3
 } from 'lucide-react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 // Custom Button Group Component for Confidence Level
 function ConfidenceLevelSelector({ 
@@ -118,13 +122,108 @@ export default function SampleSizeCalculator() {
     updateSampleParameters
   } = useSema();
   const { toast } = useToast();
+  const { wallets } = useWallets();
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
 
   const [parameters, setParameters] = useState({
     confidence_level: sampleParameters?.confidence_level || 0.95,
     margin_error: sampleParameters?.margin_error || 0.05,
     population_proportion: sampleParameters?.population_proportion || 0.5
   });
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, data: any) => {
+    if (!wallets || wallets.length === 0 || !activeClient) {
+      console.warn('No wallet connected or no active client, skipping blockchain log');
+      return;
+    }
+
+    if (activeClient.status === 'demo') {
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Sample Size Calculator',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: activeClient.id,
+          clientName: activeClient.name,
+          ...data,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+      } else {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!activeClient) return;
@@ -146,6 +245,14 @@ export default function SampleSizeCalculator() {
       toast({
         title: "Parameters Saved",
         description: "Sample size parameters have been updated successfully.",
+      });
+      
+      // Log to blockchain
+      await logToBlockchain('parameters_updated', {
+        confidenceLevel: parameters.confidence_level,
+        marginError: parameters.margin_error,
+        populationProportion: parameters.population_proportion,
+        baseSampleSize: calculateSampleSize(),
       });
     } catch (error: any) {
       toast({
@@ -174,8 +281,18 @@ export default function SampleSizeCalculator() {
     );
   }
 
-  const baseSampleSize = sampleParameters?.base_sample_size || 0;
-  const zScore = sampleParameters?.z_score || 1.96;
+  // Calculate sample size locally based on current parameters
+  const calculateSampleSize = () => {
+    const z = parameters.confidence_level === 0.90 ? 1.645 : 
+              parameters.confidence_level === 0.95 ? 1.96 : 2.576;
+    const p = parameters.population_proportion;
+    const e = parameters.margin_error;
+    return Math.ceil((Math.pow(z, 2) * p * (1 - p)) / Math.pow(e, 2));
+  };
+
+  const baseSampleSize = calculateSampleSize();
+  const zScore = parameters.confidence_level === 0.90 ? 1.645 : 
+                 parameters.confidence_level === 0.95 ? 1.96 : 2.576;
 
   return (
     <div className="space-y-6">
@@ -293,6 +410,15 @@ export default function SampleSizeCalculator() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Blockchain Verification - Only show for non-demo clients */}
+      {activeClient && activeClient.status !== 'demo' && (
+        <BlockchainVerificationCard 
+          logs={blockchainLogs}
+          isLogging={isLoggingToBlockchain}
+          module="Sample Size Calculator"
+        />
+      )}
 
       {/* Sample Size by Stakeholder Category */}
       <Card>
