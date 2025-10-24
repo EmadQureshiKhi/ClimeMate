@@ -21,6 +21,10 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useState } from 'react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 export default function ReportingDashboard() {
   const { 
@@ -32,6 +36,18 @@ export default function ReportingDashboard() {
     reports
   } = useSema();
   const { toast } = useToast();
+  const { wallets } = useWallets();
+
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
 
   if (!activeClient) {
     return (
@@ -48,6 +64,93 @@ export default function ReportingDashboard() {
       </Card>
     );
   }
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, data: any) => {
+    if (!wallets || wallets.length === 0 || !activeClient) {
+      console.warn('No wallet connected or no active client, skipping blockchain log');
+      return;
+    }
+
+    // Don't log for demo clients
+    if (activeClient.status === 'demo') {
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      // Create detailed audit log data
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Reporting Dashboard',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: activeClient.id,
+          clientName: activeClient.name,
+          ...data,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      // Add pending log
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      // Log to Solana
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+      } else {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   // Calculate final material topics
   const externalMaterialTopics = materialTopics.filter(t => t.is_material);
@@ -106,7 +209,19 @@ export default function ReportingDashboard() {
     try {
       toast({
         title: "Report Finalized",
-        description: "SEMA report has been finalized. Blockchain verification coming soon!",
+        description: "SEMA report has been finalized and logged to blockchain!",
+      });
+
+      // Log to blockchain
+      await logToBlockchain('report_finalized', {
+        reportTitle: `${activeClient.name} - SEMA Report ${new Date().getFullYear()}`,
+        materialTopicsCount: finalMaterialTopics.length,
+        stakeholdersCount: stakeholders.length,
+        priorityStakeholdersCount: priorityStakeholders,
+        externalTopicsCount: externalMaterialTopics.length,
+        internalTopicsCount: internalMaterialTopics.length,
+        overallProgress: overallProgress,
+        completionDate: new Date().toISOString(),
       });
     } catch (error: any) {
       toast({
@@ -264,7 +379,7 @@ export default function ReportingDashboard() {
             Finalize SEMA Report
           </CardTitle>
           <CardDescription>
-            Log your completed SEMA assessment to Hedera for immutable verification
+            Log your completed SEMA assessment to Solana for immutable verification
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -320,6 +435,15 @@ export default function ReportingDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Blockchain Verification - Only show for non-demo clients */}
+      {activeClient && activeClient.status !== 'demo' && (
+        <BlockchainVerificationCard 
+          logs={blockchainLogs}
+          isLogging={isLoggingToBlockchain}
+          module="Reporting Dashboard"
+        />
+      )}
 
       {/* Final Material Topics - New Card-based Design */}
       <Card>
