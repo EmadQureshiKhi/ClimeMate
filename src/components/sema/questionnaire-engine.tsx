@@ -141,6 +141,26 @@ export default function QuestionnaireEngine() {
               : log
           )
         );
+
+        // Save to database
+        try {
+          await fetch('/api/sema/blockchain-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: activeClient.id,
+              module: 'Questionnaire Engine',
+              action,
+              transactionSignature: logResult.signature,
+              dataHash,
+              details: logData,
+              userWalletAddress: wallet.address,
+              status: 'success',
+            }),
+          });
+        } catch (dbError) {
+          console.error('Failed to save log to database:', dbError);
+        }
       } else {
         setBlockchainLogs(prev => 
           prev.map((log, index) => 

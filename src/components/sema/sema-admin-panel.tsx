@@ -86,6 +86,13 @@ export default function SemaAdminPanel({
       return;
     }
 
+    // Use the client ID from clientData (for new clients) or activeClient (for existing)
+    const clientId = clientData.id || activeClient?.id;
+    if (!clientId) {
+      console.warn('No client ID available, skipping blockchain log');
+      return;
+    }
+
     setIsLoggingToBlockchain(true);
 
     try {
@@ -141,6 +148,26 @@ export default function SemaAdminPanel({
               : log
           )
         );
+
+        // Save to database
+        try {
+          await fetch('/api/sema/blockchain-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId,
+              module: 'Admin Panel',
+              action,
+              transactionSignature: logResult.signature,
+              dataHash,
+              details: logData,
+              userWalletAddress: wallet.address,
+              status: 'success',
+            }),
+          });
+        } catch (dbError) {
+          console.error('Failed to save log to database:', dbError);
+        }
       } else {
         // Update log with error
         setBlockchainLogs(prev => 

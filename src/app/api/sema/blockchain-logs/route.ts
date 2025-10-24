@@ -34,9 +34,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { clientId, action, dataHash, transactionSignature, status, error, metadata } = body;
+    const { 
+      clientId, 
+      module,
+      action, 
+      dataHash, 
+      transactionSignature, 
+      status, 
+      error, 
+      details,
+      userWalletAddress 
+    } = body;
 
-    if (!clientId || !action || !dataHash) {
+    if (!clientId || !action || !dataHash || !module || !userWalletAddress) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -46,12 +56,14 @@ export async function POST(request: NextRequest) {
     const log = await prisma.sEMABlockchainLog.create({
       data: {
         clientId,
+        module,
         action,
         dataHash,
-        transactionSignature: transactionSignature || null,
+        transactionSignature: transactionSignature || '',
         status: status || 'pending',
         error: error || null,
-        metadata: metadata || null,
+        details: details || {},
+        userWalletAddress,
       },
     });
 
