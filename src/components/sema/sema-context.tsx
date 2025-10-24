@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 
 // Export SemaModule type for use in other components
 export type SemaModule = 
@@ -175,6 +176,7 @@ export function SemaProvider({
   setActiveSemaModule, 
   setOpenAdminClientForm 
 }: SemaProviderProps) {
+  const { user } = usePrivy();
   const [clients, setClients] = useState<SemaClient[]>([]);
   const [activeClient, setActiveClient] = useState<SemaClient | null>(null);
   const [stakeholders, setStakeholders] = useState<SemaStakeholder[]>([]);
@@ -657,9 +659,7 @@ export function SemaProvider({
 
   // Load clients on mount
   useEffect(() => {
-    // Just show demo client for now
-    setClients([DEMO_CLIENT]);
-    setActiveClient(DEMO_CLIENT);
+    loadClients();
   }, []);
 
   // Load data when active client changes
@@ -674,10 +674,29 @@ export function SemaProvider({
   }, [activeClient]);
 
   const loadClients = async () => {
-    // Mock function for demo
-    setClients([DEMO_CLIENT]);
-    if (!activeClient) {
-      setActiveClient(DEMO_CLIENT);
+    try {
+      // Always include demo client
+      const allClients = [DEMO_CLIENT];
+      
+      // Fetch real clients from API if user is authenticated
+      if (user?.id) {
+        const response = await fetch(`/api/sema/clients?userId=${user.id}`);
+        if (response.ok) {
+          const { clients: apiClients } = await response.json();
+          allClients.push(...apiClients);
+        }
+      }
+      
+      setClients(allClients);
+      if (!activeClient) {
+        setActiveClient(DEMO_CLIENT);
+      }
+    } catch (error) {
+      console.error('Error loading clients:', error);
+      setClients([DEMO_CLIENT]);
+      if (!activeClient) {
+        setActiveClient(DEMO_CLIENT);
+      }
     }
   };
 
@@ -696,25 +715,83 @@ export function SemaProvider({
   const reloadClients = loadClients;
   
   const addClient = async (clientData: Omit<SemaClient, 'id' | 'created_at' | 'updated_at'>): Promise<SemaClient> => {
-    // Mock client creation for demo
-    const newClient: SemaClient = {
-      id: `client-${Date.now()}`,
-      ...clientData,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+    if (!user?.id) {
+      throw new Error('User not authenticated');
+    }
+
+    // Call API to create client
+    const response = await fetch('/api/sema/clients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id,
+        ...clientData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create client');
+    }
+
+    const { client: newClient } = await response.json();
+    
+    // Convert API response to match SemaClient type
+    const formattedClient: SemaClient = {
+      id: newClient.id,
+      name: newClient.name,
+      description: newClient.description,
+      industry: newClient.industry,
+      size: newClient.size,
+      status: newClient.status,
+      created_at: newClient.createdAt,
+      updated_at: newClient.updatedAt,
     };
     
-    setClients(prev => [DEMO_CLIENT, newClient, ...prev.filter(c => c.id !== 'demo-client')]);
-    setActiveClient(newClient);
+    // Reload all clients to ensure consistency
+    await loadClients();
     
-    return newClient;
+    // Set the new client as active
+    setActiveClient(formattedClient);
+    
+    return formattedClient;
   };
 
   const updateClient = async (id: string, updates: Partial<SemaClient>) => {
-    // Mock update for demo
-    setClients(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    // Don't allow updating demo client
+    if (id === 'demo-client') {
+      throw new Error('Cannot update demo client');
+    }
+
+    // Call API to update client
+    const response = await fetch(`/api/sema/clients/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update client');
+    }
+
+    const { client: updatedClient } = await response.json();
+    
+    // Convert API response
+    const formattedClient: SemaClient = {
+      id: updatedClient.id,
+      name: updatedClient.name,
+      description: updatedClient.description,
+      industry: updatedClient.industry,
+      size: updatedClient.size,
+      status: updatedClient.status,
+      created_at: updatedClient.createdAt,
+      updated_at: updatedClient.updatedAt,
+    };
+    
+    setClients(prev => prev.map(c => c.id === id ? formattedClient : c));
     if (activeClient?.id === id) {
-      setActiveClient(prev => prev ? { ...prev, ...updates } : null);
+      setActiveClient(formattedClient);
     }
   };
 
@@ -725,10 +802,19 @@ export function SemaProvider({
       throw new Error('Cannot delete demo client');
     }
 
-    // Mock deletion for demo
+    // Call API to delete client
+    const response = await fetch(`/api/sema/clients/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete client');
+    }
+
     setClients(prev => prev.filter(c => c.id !== id));
     if (activeClient?.id === id) {
-      setActiveClient(null);
+      setActiveClient(DEMO_CLIENT);
     }
   };
 
@@ -736,140 +822,467 @@ export function SemaProvider({
   const addStakeholder = async (stakeholderData: any): Promise<void> => {
     if (!activeClient) throw new Error('No active client');
 
-    // Mock stakeholder creation for demo
-    const newStakeholder = {
-      id: `stakeholder-${Date.now()}`,
-      ...stakeholderData,
-      client_id: activeClient.id,
-      total_score: (stakeholderData.dependency_economic + stakeholderData.dependency_social + stakeholderData.dependency_environmental +
-                   stakeholderData.influence_economic + stakeholderData.influence_social + stakeholderData.influence_environmental),
-      normalized_score: 0.8,
-      influence_category: 'High' as const,
-      is_priority: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    setStakeholders(prev => [...prev, newStakeholder]);
+    // For demo client, just add to local state
+    if (activeClient.status === 'demo') {
+      const newStakeholder = {
+        id: `stakeholder-${Date.now()}`,
+        ...stakeholderData,
+        client_id: activeClient.id,
+        total_score: (stakeholderData.dependency_economic + stakeholderData.dependency_social + stakeholderData.dependency_environmental +
+                     stakeholderData.influence_economic + stakeholderData.influence_social + stakeholderData.influence_environmental),
+        normalized_score: 0.8,
+        influence_category: 'High' as const,
+        is_priority: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setStakeholders(prev => [...prev, newStakeholder]);
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch('/api/sema/stakeholders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: activeClient.id,
+        ...stakeholderData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create stakeholder');
+    }
+
+    // Refresh data to get the new stakeholder
+    await refreshData();
   };
 
   // Update stakeholder function
   const updateStakeholder = async (id: string, updates: any): Promise<void> => {
-    // Mock update for demo
-    setStakeholders(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just update local state
+    if (activeClient.status === 'demo') {
+      setStakeholders(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/stakeholders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update stakeholder');
+    }
+
+    // Refresh data to get the updated stakeholder
+    await refreshData();
   };
 
   // Delete stakeholder function
   const deleteStakeholder = async (id: string): Promise<void> => {
-    // Mock deletion for demo
-    setStakeholders(prev => prev.filter(s => s.id !== id));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just remove from local state
+    if (activeClient.status === 'demo') {
+      setStakeholders(prev => prev.filter(s => s.id !== id));
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/stakeholders/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete stakeholder');
+    }
+
+    // Refresh data to remove the deleted stakeholder
+    await refreshData();
   };
 
   // Update sample parameters function
   const updateSampleParameters = async (parameters: any): Promise<void> => {
     if (!activeClient) throw new Error('No active client');
 
-    // Don't save to database for demo client
+    // For demo client, just update local state
     if (activeClient.status === 'demo') {
-      console.log('Demo mode: Sample parameters not saved to database');
+      const newParams = {
+        id: sampleParameters?.id || `params-${Date.now()}`,
+        client_id: activeClient.id,
+        ...parameters,
+        z_score: parameters.confidence_level === 0.90 ? 1.645 : 
+                 parameters.confidence_level === 0.95 ? 1.96 : 2.576,
+        base_sample_size: Math.ceil(
+          Math.pow(parameters.confidence_level === 0.90 ? 1.645 : 
+                   parameters.confidence_level === 0.95 ? 1.96 : 2.576, 2) *
+          parameters.population_proportion * (1 - parameters.population_proportion) /
+          Math.pow(parameters.margin_error, 2)
+        ),
+        created_at: sampleParameters?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      setSampleParameters(newParams);
       return;
     }
 
-    // Mock update for demo
-    const newParams = {
-      id: sampleParameters?.id || `params-${Date.now()}`,
-      client_id: activeClient.id,
-      ...parameters,
-      z_score: parameters.confidence_level === 0.90 ? 1.645 : 
-               parameters.confidence_level === 0.95 ? 1.96 : 2.576,
-      base_sample_size: Math.ceil(
-        Math.pow(parameters.confidence_level === 0.90 ? 1.645 : 
-                 parameters.confidence_level === 0.95 ? 1.96 : 2.576, 2) *
-        parameters.population_proportion * (1 - parameters.population_proportion) /
-        Math.pow(parameters.margin_error, 2)
-      ),
-      created_at: sampleParameters?.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    setSampleParameters(newParams);
+    // For real clients, call the API
+    const response = await fetch('/api/sema/sample-parameters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: activeClient.id,
+        ...parameters,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to save sample parameters');
+    }
+
+    // Refresh data
+    await refreshData();
   };
 
   // Add material topic function
   const addMaterialTopic = async (topicData: any): Promise<void> => {
     if (!activeClient) throw new Error('No active client');
 
-    // Mock topic creation for demo
-    const newTopic = {
-      id: `topic-${Date.now()}`,
-      ...topicData,
-      client_id: activeClient.id,
-      average_score: Math.random() * 3 + 7, // Demo: Random score between 7-10
-      response_count: Math.floor(Math.random() * 20) + 30, // Demo: 30-50 responses
-      is_material: Math.random() > 0.3, // 70% chance of being material
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    // For demo client, just add to local state
+    if (activeClient.status === 'demo') {
+      const newTopic = {
+        id: `topic-${Date.now()}`,
+        ...topicData,
+        client_id: activeClient.id,
+        average_score: Math.random() * 3 + 7,
+        response_count: Math.floor(Math.random() * 20) + 30,
+        is_material: Math.random() > 0.3,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setMaterialTopics(prev => [...prev, newTopic]);
+      return;
+    }
+
+    // Transform gri_code to griCode for Prisma
+    const { gri_code, ...rest } = topicData;
+    const transformedData = {
+      ...rest,
+      ...(gri_code && { griCode: gri_code }),
     };
-    
-    setMaterialTopics(prev => [...prev, newTopic]);
+
+    // For real clients, call the API
+    const response = await fetch('/api/sema/material-topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: activeClient.id,
+        ...transformedData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create material topic');
+    }
+
+    await refreshData();
   };
 
   // Update material topic function
   const updateMaterialTopic = async (id: string, updates: any): Promise<void> => {
-    // Mock update for demo
-    setMaterialTopics(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just update local state
+    if (activeClient.status === 'demo') {
+      setMaterialTopics(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+      return;
+    }
+
+    // Transform gri_code to griCode for Prisma
+    const { gri_code, ...rest } = updates;
+    const transformedUpdates = {
+      ...rest,
+      ...(gri_code !== undefined && { griCode: gri_code }),
+    };
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/material-topics/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(transformedUpdates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update material topic');
+    }
+
+    await refreshData();
   };
 
   // Delete material topic function
   const deleteMaterialTopic = async (id: string): Promise<void> => {
-    // Mock deletion for demo
-    setMaterialTopics(prev => prev.filter(t => t.id !== id));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just remove from local state
+    if (activeClient.status === 'demo') {
+      setMaterialTopics(prev => prev.filter(t => t.id !== id));
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/material-topics/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete material topic');
+    }
+
+    await refreshData();
   };
 
   // Add internal topic function
   const addInternalTopic = async (topicData: any): Promise<void> => {
     if (!activeClient) throw new Error('No active client');
 
-    // Mock internal topic creation for demo
-    const newTopic = {
-      id: `internal-${Date.now()}`,
-      ...topicData,
-      client_id: activeClient.id,
-      significance: topicData.severity * topicData.likelihood,
-      is_material: (topicData.severity * topicData.likelihood) >= 10,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    setInternalTopics(prev => [...prev, newTopic]);
+    // For demo client, just add to local state
+    if (activeClient.status === 'demo') {
+      const newTopic = {
+        id: `internal-${Date.now()}`,
+        ...topicData,
+        client_id: activeClient.id,
+        significance: topicData.severity * topicData.likelihood,
+        is_material: (topicData.severity * topicData.likelihood) >= 10,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setInternalTopics(prev => [...prev, newTopic]);
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch('/api/sema/internal-topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: activeClient.id,
+        ...topicData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create internal topic');
+    }
+
+    await refreshData();
   };
 
   // Update internal topic function
   const updateInternalTopic = async (id: string, updates: any): Promise<void> => {
-    // Mock update for demo
-    const updatedData = {
-      ...updates,
-      significance: updates.severity * updates.likelihood,
-      is_material: (updates.severity * updates.likelihood) >= 10,
-      updated_at: new Date().toISOString()
-    };
-    setInternalTopics(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just update local state
+    if (activeClient.status === 'demo') {
+      const updatedData = {
+        ...updates,
+        significance: updates.severity * updates.likelihood,
+        is_material: (updates.severity * updates.likelihood) >= 10,
+        updated_at: new Date().toISOString()
+      };
+      setInternalTopics(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/internal-topics/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to update internal topic');
+    }
+
+    await refreshData();
   };
 
   // Delete internal topic function
   const deleteInternalTopic = async (id: string): Promise<void> => {
-    // Mock deletion for demo
-    setInternalTopics(prev => prev.filter(t => t.id !== id));
+    if (!activeClient) throw new Error('No active client');
+
+    // For demo client, just remove from local state
+    if (activeClient.status === 'demo') {
+      setInternalTopics(prev => prev.filter(t => t.id !== id));
+      return;
+    }
+
+    // For real clients, call the API
+    const response = await fetch(`/api/sema/internal-topics/${id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to delete internal topic');
+    }
+
+    await refreshData();
   };
 
   const refreshData = async () => {
     if (!activeClient) return;
 
     setIsLoading(true);
-    // Mock data refresh for demo - data is already loaded
-    setTimeout(() => {
+    
+    try {
+      // Fetch stakeholders
+      const stakeholdersResponse = await fetch(`/api/sema/stakeholders?clientId=${activeClient.id}`);
+      if (stakeholdersResponse.ok) {
+        const { stakeholders: apiStakeholders } = await stakeholdersResponse.json();
+        const transformedStakeholders = (apiStakeholders || []).map((s: any) => ({
+          id: s.id,
+          client_id: s.clientId,
+          name: s.name,
+          category: s.category,
+          stakeholder_type: s.stakeholderType,
+          dependency_economic: s.dependencyEconomic,
+          dependency_social: s.dependencySocial,
+          dependency_environmental: s.dependencyEnvironmental,
+          influence_economic: s.influenceEconomic,
+          influence_social: s.influenceSocial,
+          influence_environmental: s.influenceEnvironmental,
+          total_score: s.totalScore,
+          normalized_score: s.normalizedScore || 0,
+          influence_category: s.influenceCategory,
+          is_priority: s.isPriority,
+          population_size: s.populationSize || 0,
+          created_at: s.createdAt,
+          updated_at: s.updatedAt,
+        }));
+        setStakeholders(transformedStakeholders);
+      } else {
+        setStakeholders([]);
+      }
+
+      // Fetch sample parameters
+      const paramsResponse = await fetch(`/api/sema/sample-parameters?clientId=${activeClient.id}`);
+      if (paramsResponse.ok) {
+        const { parameters } = await paramsResponse.json();
+        if (parameters) {
+          setSampleParameters({
+            id: parameters.id,
+            client_id: parameters.clientId,
+            confidence_level: parameters.confidenceLevel,
+            margin_error: parameters.marginError,
+            population_proportion: parameters.populationProportion,
+            z_score: parameters.zScore,
+            base_sample_size: parameters.baseSampleSize,
+            created_at: parameters.createdAt,
+            updated_at: parameters.updatedAt,
+          });
+        } else {
+          setSampleParameters(null);
+        }
+      } else {
+        setSampleParameters(null);
+      }
+
+      // Fetch material topics
+      const materialResponse = await fetch(`/api/sema/material-topics?clientId=${activeClient.id}`);
+      if (materialResponse.ok) {
+        const { topics } = await materialResponse.json();
+        const transformedTopics = (topics || []).map((t: any) => ({
+          id: t.id,
+          client_id: t.clientId,
+          name: t.name,
+          description: t.description,
+          category: t.category,
+          gri_code: t.griCode,
+          average_score: t.averageScore,
+          response_count: t.responseCount,
+          is_material: t.isMaterial,
+          created_at: t.createdAt,
+          updated_at: t.updatedAt,
+        }));
+        setMaterialTopics(transformedTopics);
+      } else {
+        setMaterialTopics([]);
+      }
+
+      // Fetch internal topics
+      const internalResponse = await fetch(`/api/sema/internal-topics?clientId=${activeClient.id}`);
+      if (internalResponse.ok) {
+        const { topics } = await internalResponse.json();
+        const transformedTopics = (topics || []).map((t: any) => ({
+          id: t.id,
+          client_id: t.clientId,
+          name: t.name,
+          description: t.description,
+          category: t.category,
+          severity: t.severity,
+          likelihood: t.likelihood,
+          significance: t.significance,
+          is_material: t.isMaterial,
+          created_at: t.createdAt,
+          updated_at: t.updatedAt,
+        }));
+        setInternalTopics(transformedTopics);
+      } else {
+        setInternalTopics([]);
+      }
+
+      // Fetch reports
+      const reportsResponse = await fetch(`/api/sema/reports?clientId=${activeClient.id}`);
+      if (reportsResponse.ok) {
+        const { reports } = await reportsResponse.json();
+        const transformedReports = (reports || []).map((r: any) => ({
+          id: r.id,
+          client_id: r.clientId,
+          title: r.title,
+          report_type: r.reportType,
+          material_topics: r.materialTopics,
+          gri_disclosures: r.griDisclosures,
+          process_summary: r.processSummary,
+          status: r.status,
+          generated_at: r.generatedAt,
+          created_at: r.createdAt,
+          updated_at: r.updatedAt,
+        }));
+        setReports(transformedReports);
+      } else {
+        setReports([]);
+      }
+
+      // Clear questionnaire responses for now (will be loaded per topic)
+      setQuestionnaireResponses([]);
+      
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      // Clear data on error
+      setStakeholders([]);
+      setSampleParameters(null);
+      setMaterialTopics([]);
+      setInternalTopics([]);
+      setQuestionnaireResponses([]);
+      setReports([]);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   return (
