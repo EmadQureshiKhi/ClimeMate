@@ -200,20 +200,46 @@ model SEMAStakeholder {
 model SEMABlockchainLog {
   id                    String   @id @default(cuid())
   clientId              String
+  module                String   // "Admin Panel", "Stakeholder Management", etc.
   action                String   // client_added, client_updated, client_deleted, stakeholder_added, etc.
   dataHash              String
-  transactionSignature  String?
+  transactionSignature  String   @default("")
   status                String   @default("pending") // pending, success, error
   error                 String?
-  metadata              Json?    // Additional data about the action
+  details               Json?    // Complete audit data payload
+  metadata              Json?    // Additional data about the action (deprecated, use details)
+  userWalletAddress     String   // Solana wallet address of user who performed action
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   client SEMAClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
+  @@index([userWalletAddress])
   @@index([status])
   @@index([createdAt])
+  @@index([module])
+}
+
+// General Audit Logs (for certificates, uploads, etc.)
+model AuditLog {
+  id                    String   @id @default(cuid())
+  module                String   // "Certificate", "Upload", "GHG Calculator", etc.
+  action                String   // "certificate_created", "nft_minted", "data_uploaded", etc.
+  transactionSignature  String   @default("")
+  dataHash              String
+  details               Json?    // Complete audit data payload
+  userWalletAddress     String   // Solana wallet address
+  userId                String?  // Privy user ID
+  status                String   @default("success") // "success", "error", "pending"
+  error                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([userWalletAddress])
+  @@index([module])
+  @@index([createdAt])
+  @@index([userId])
 }
 
 // SEMA Sample Parameters
