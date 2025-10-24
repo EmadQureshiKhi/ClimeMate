@@ -231,30 +231,14 @@ export function getNFTExplorerUrl(transactionSignature: string, cluster?: 'mainn
  */
 export async function logCertificateOnChain(
   walletAddress: string,
-  certificateData: {
-    certificateId: string;
-    dataHash: string;
-    totalEmissions: number;
-    breakdown: Record<string, number>;
-    timestamp: string;
-  },
+  logData: any, // Accept any data structure for flexibility
   signAndSendTransaction: (transaction: any) => Promise<{ signature: string }>
 ): Promise<{ success: boolean; signature?: string; error?: string }> {
   try {
-    console.log('📝 Logging certificate on Solana blockchain...');
+    console.log('📝 Logging data on Solana blockchain...');
     
-    // Create log message
-    const logMessage = {
-      type: 'CARBON_CERTIFICATE',
-      version: '1.0',
-      certificateId: certificateData.certificateId,
-      dataHash: certificateData.dataHash,
-      totalEmissions: certificateData.totalEmissions,
-      breakdown: certificateData.breakdown,
-      timestamp: certificateData.timestamp,
-    };
-    
-    const logString = JSON.stringify(logMessage);
+    // Use the provided log data directly (already formatted by caller)
+    const logString = JSON.stringify(logData);
     console.log('📋 Log message:', logString);
     
     // Create connection
