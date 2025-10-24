@@ -134,7 +134,7 @@ export function SemaApp() {
                 <div>
                   <h1 className="text-xl font-bold">SEMA Automation Tool</h1>
                   <p className="text-sm text-muted-foreground">
-                    Stakeholder Engagement & Materiality Assessment • Hedera Verified
+                    Stakeholder Engagement & Materiality Assessment • Solana Verified
                   </p>
                 </div>
               </div>
@@ -177,8 +177,9 @@ export function SemaApp() {
                       key={module.id}
                       variant={isActive ? "default" : "ghost"}
                       className={cn(
-                        "w-full justify-start h-auto p-3",
-                        sidebarCollapsed ? "px-3 justify-center h-14" : "px-4"
+                        "w-full justify-start h-auto p-3 transition-colors",
+                        sidebarCollapsed ? "px-3 justify-center h-14" : "px-4",
+                        !isActive && "hover:bg-green-50 dark:hover:bg-green-950 hover:text-green-700 dark:hover:text-green-300"
                       )}
                       onClick={() => setActiveModule(module.id)}
                     >
@@ -189,7 +190,10 @@ export function SemaApp() {
                       {!sidebarCollapsed && (
                         <div className="text-left">
                           <div className="font-medium">{module.name}</div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className={cn(
+                            "text-xs",
+                            isActive ? "text-green-100" : "text-muted-foreground"
+                          )}>
                             {module.description}
                           </div>
                         </div>
