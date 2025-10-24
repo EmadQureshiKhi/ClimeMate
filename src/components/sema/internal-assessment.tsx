@@ -13,9 +13,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useSema } from './sema-context';
 import { useToast } from '@/hooks/use-toast';
 import { Target, Plus, CreditCard as Edit, Trash2, AlertTriangle, TrendingUp, Grid3x3 as Grid3X3 } from 'lucide-react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 // Import your topic type here if needed
 // import type { SemaInternalTopic } from '@/types/sema';
@@ -30,12 +44,28 @@ export default function InternalAssessment() {
     deleteInternalTopic
   } = useSema();
   const { toast } = useToast();
+  const { wallets } = useWallets();
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   // FIX: Explicitly type editingTopic
   const [editingTopic, setEditingTopic] = useState<any | null>(null); // <-- Replace 'any' with 'SemaInternalTopic' if you have the type
 
   const [isLoading, setIsLoading] = useState(false);
+
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [topicToDelete, setTopicToDelete] = useState<any | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -44,6 +74,93 @@ export default function InternalAssessment() {
     severity: 3,
     likelihood: 3
   });
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, data: any) => {
+    if (!wallets || wallets.length === 0 || !activeClient) {
+      console.warn('No wallet connected or no active client, skipping blockchain log');
+      return;
+    }
+
+    // Don't log for demo clients
+    if (activeClient.status === 'demo') {
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      // Create detailed audit log data
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Internal Assessment',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: activeClient.id,
+          clientName: activeClient.name,
+          ...data,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      // Add pending log
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      // Log to Solana
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+      } else {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -75,6 +192,9 @@ export default function InternalAssessment() {
 
     setIsLoading(true);
     try {
+      const significance = formData.severity * formData.likelihood;
+      const isMaterial = significance >= 10;
+
       if (editingTopic) {
         // FIX: Use non-null assertion
         await updateInternalTopic(editingTopic!.id, formData);
@@ -83,12 +203,34 @@ export default function InternalAssessment() {
           title: "Topic Updated",
           description: `${formData.name} has been updated successfully.`,
         });
+
+        // Log to blockchain
+        await logToBlockchain('internal_topic_updated', {
+          topicId: editingTopic.id,
+          topicName: formData.name,
+          category: formData.category,
+          severity: formData.severity,
+          likelihood: formData.likelihood,
+          significance,
+          isMaterial,
+        });
       } else {
-        await addInternalTopic(formData);
+        const newTopic = await addInternalTopic(formData);
 
         toast({
           title: "Topic Added",
           description: `${formData.name} has been added successfully.`,
+        });
+
+        // Log to blockchain
+        await logToBlockchain('internal_topic_added', {
+          topicId: newTopic?.id || 'new',
+          topicName: formData.name,
+          category: formData.category,
+          severity: formData.severity,
+          likelihood: formData.likelihood,
+          significance,
+          isMaterial,
         });
       }
 
@@ -104,15 +246,30 @@ export default function InternalAssessment() {
     }
   };
 
-  const handleDelete = async (topic: any) => {
-    if (!confirm(`Are you sure you want to delete ${topic.name}?`)) return;
+  const handleDelete = (topic: any) => {
+    setTopicToDelete(topic);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!topicToDelete) return;
 
     try {
-      await deleteInternalTopic(topic.id);
+      await deleteInternalTopic(topicToDelete.id);
 
       toast({
         title: "Topic Deleted",
-        description: `${topic.name} has been deleted.`,
+        description: `${topicToDelete.name} has been deleted.`,
+      });
+
+      // Log to blockchain
+      await logToBlockchain('internal_topic_deleted', {
+        topicId: topicToDelete.id,
+        topicName: topicToDelete.name,
+        category: topicToDelete.category,
+        severity: topicToDelete.severity,
+        likelihood: topicToDelete.likelihood,
+        significance: topicToDelete.significance,
       });
     } catch (error: any) {
       toast({
@@ -120,6 +277,9 @@ export default function InternalAssessment() {
         description: error.message || "Failed to delete topic",
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setTopicToDelete(null);
     }
   };
 
@@ -197,6 +357,15 @@ export default function InternalAssessment() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Blockchain Verification - Only show for non-demo clients */}
+      {activeClient && activeClient.status !== 'demo' && (
+        <BlockchainVerificationCard 
+          logs={blockchainLogs}
+          isLogging={isLoggingToBlockchain}
+          module="Internal Assessment"
+        />
+      )}
 
       {/* Add/Edit Form */}
       {isFormOpen && (
@@ -533,6 +702,28 @@ export default function InternalAssessment() {
           </CardContent>
         </Card>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Internal Topic</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{topicToDelete?.name}</strong>? 
+              This action cannot be undone and will remove this topic from your internal assessment.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
