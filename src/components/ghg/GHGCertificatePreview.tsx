@@ -183,11 +183,20 @@ export function GHGCertificatePreview({
           const logResult = await logCertificateOnChain(
             walletAddress,
             {
-              certificateId,
-              dataHash,
-              totalEmissions,
-              breakdown: calculations.categoryBreakdown,
+              type: 'CERTIFICATE_AUDIT_LOG',
+              version: '1.0',
+              application: 'ClimeMate GHG Calculator',
+              module: 'GHG Certificate Generation',
+              action: 'Certificate Created',
+              details: {
+                certificateId,
+                dataHash,
+                totalEmissions,
+                breakdown: calculations.categoryBreakdown,
+                organizationName: calculations.organizationName,
+              },
               timestamp: new Date().toISOString(),
+              user: walletAddress,
             },
             async (txData: any) => {
               const result = await wallet.signAndSendTransaction(txData);

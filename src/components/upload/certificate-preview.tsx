@@ -189,11 +189,20 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       const logResult = await logCertificateOnChain(
         activeWalletAddress,
         {
-          certificateId,
-          dataHash,
-          totalEmissions: calculations.totalEmissions,
-          breakdown,
+          type: 'CERTIFICATE_AUDIT_LOG',
+          version: '1.0',
+          application: 'ClimeMate Carbon Certificate',
+          module: 'Certificate Generation',
+          action: 'Certificate Created',
+          details: {
+            certificateId,
+            dataHash,
+            totalEmissions: calculations.totalEmissions,
+            breakdown,
+            organizationName: calculations.organizationName,
+          },
           timestamp: new Date().toISOString(),
+          user: activeWalletAddress,
         },
         async (txData: any) => {
           const result = await wallet.signAndSendTransaction(txData);
