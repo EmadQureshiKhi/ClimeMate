@@ -94,6 +94,59 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('✅ Certificate created successfully:', certificate.id);
+
+    // Log certificate creation to audit logs
+    try {
+      const walletAddress = user.walletAddress || '';
+      if (walletAddress) {
+        // Determine if this is from GHG Calculator or Upload Data
+        const isGHGCalculator = certificateId.startsWith('GHG-CALC-');
+        const isUploadData = certificateId.startsWith('GHG-') && !isGHGCalculator;
+        
+        const module = isGHGCalculator ? 'GHG Calculator' : 'Certificate Generation';
+        const action = isUploadData ? 'upload_data_certificate' : 'certificate_created';
+        
+        // Build details based on source
+        const logDetails: any = {
+          certificateId: certificate.certificateId,
+          title: certificate.title,
+          totalEmissions: certificate.totalEmissions,
+          status: certificate.status,
+          issueDate: certificate.issueDate,
+        };
+        
+        // For Upload Data, include breakdown categories
+        if (isUploadData && breakdown) {
+          logDetails.breakdown = breakdown;
+          logDetails.categories = Object.keys(breakdown).length;
+        }
+        
+        // For GHG Calculator, include scope breakdown
+        if (isGHGCalculator && breakdown) {
+          logDetails.scope1 = breakdown.scope1 || 0;
+          logDetails.scope2 = breakdown.scope2 || 0;
+          logDetails.scope3 = breakdown.scope3 || 0;
+        }
+        
+        await fetch(`${request.nextUrl.origin}/api/audit-logs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            module,
+            action,
+            transactionSignature: logTransactionSignature || blockchainTx || '',
+            details: logDetails,
+            userWalletAddress: walletAddress,
+            userId: privyUserId,
+          }),
+        });
+        console.log('✅ Audit log created for certificate');
+      }
+    } catch (logError) {
+      console.error('Failed to create audit log:', logError);
+      // Don't fail the whole operation if logging fails
+    }
+
     return NextResponse.json({ certificate }, { status: 201 });
   } catch (error: any) {
     console.error('❌ Error creating certificate:', error);

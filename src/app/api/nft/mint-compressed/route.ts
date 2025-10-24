@@ -138,6 +138,28 @@ export async function POST(request: NextRequest) {
     console.log('📝 Transaction:', signature);
     console.log('🌳 Merkle Tree:', merkleTreeAddress);
 
+    // Update the existing audit log with NFT transaction
+    try {
+      // Find the most recent certificate_created log for this certificate
+      const response = await fetch(`${request.nextUrl.origin}/api/audit-logs/update-nft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          certificateId: certificateData.certificateId,
+          nftTransactionSignature: signature,
+          nftAddress: merkleTreeAddress,
+          metadataUri,
+        }),
+      });
+      
+      if (response.ok) {
+        console.log('✅ Audit log updated with NFT transaction');
+      }
+    } catch (logError) {
+      console.error('Failed to update audit log:', logError);
+      // Don't fail the whole operation if logging fails
+    }
+
     return NextResponse.json({
       success: true,
       nftAddress: merkleTreeAddress,

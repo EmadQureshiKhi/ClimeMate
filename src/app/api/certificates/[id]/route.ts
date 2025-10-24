@@ -49,6 +49,37 @@ export async function PATCH(
       },
     });
 
+    // Update audit log with memo transaction signature
+    if (body.logTransactionSignature && certificate.certificateId) {
+      try {
+        const auditLog = await prisma.auditLog.findFirst({
+          where: {
+            action: 'certificate_created',
+            details: {
+              path: ['certificateId'],
+              equals: certificate.certificateId,
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
+
+        if (auditLog) {
+          await prisma.auditLog.update({
+            where: { id: auditLog.id },
+            data: {
+              transactionSignature: body.logTransactionSignature,
+            },
+          });
+          console.log('✅ Audit log updated with memo transaction');
+        }
+      } catch (logError) {
+        console.error('Failed to update audit log:', logError);
+        // Don't fail the whole operation
+      }
+    }
+
     return NextResponse.json({ certificate }, { status: 200 });
   } catch (error) {
     console.error('Error updating certificate:', error);
