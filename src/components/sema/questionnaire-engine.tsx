@@ -14,9 +14,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useSema } from './sema-context';
 import { useToast } from '@/hooks/use-toast';
 import { MessageSquare, Plus, CreditCard as Edit, Trash2, Users, Clock, Star, BarChart3 } from 'lucide-react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 // Import your topic type if you have it
 // import type { SemaMaterialTopic } from '@/types/sema';
@@ -40,12 +54,25 @@ export default function QuestionnaireEngine() {
     deleteMaterialTopic
   } = useSema();
   const { toast } = useToast();
+  const { wallets } = useWallets();
   const [isFormOpen, setIsFormOpen] = useState(false);
-
-  // FIX: Explicitly type editingTopic
-  const [editingTopic, setEditingTopic] = useState<any | null>(null); // Replace 'any' with 'SemaMaterialTopic' if you have the type
-
+  const [editingTopic, setEditingTopic] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [topicToDelete, setTopicToDelete] = useState<any | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -53,6 +80,89 @@ export default function QuestionnaireEngine() {
     category: 'Environmental' as 'Economic' | 'Environmental' | 'Social',
     gri_code: ''
   });
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, data: any) => {
+    if (!wallets || wallets.length === 0 || !activeClient) {
+      console.warn('No wallet connected or no active client, skipping blockchain log');
+      return;
+    }
+
+    if (activeClient.status === 'demo') {
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Questionnaire Engine',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: activeClient.id,
+          clientName: activeClient.name,
+          ...data,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+      } else {
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -82,13 +192,22 @@ export default function QuestionnaireEngine() {
 
     setIsLoading(true);
     try {
+      const action = editingTopic ? 'material_topic_updated' : 'material_topic_added';
+      
       if (editingTopic) {
-        // Use non-null assertion
         await updateMaterialTopic(editingTopic!.id, formData);
 
         toast({
           title: "Topic Updated",
           description: `${formData.name} has been updated successfully.`,
+        });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          topicId: editingTopic.id,
+          topicName: formData.name,
+          category: formData.category,
+          griCode: formData.gri_code,
         });
       } else {
         await addMaterialTopic(formData);
@@ -96,6 +215,13 @@ export default function QuestionnaireEngine() {
         toast({
           title: "Topic Added",
           description: `${formData.name} has been added successfully.`,
+        });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          topicName: formData.name,
+          category: formData.category,
+          griCode: formData.gri_code,
         });
       }
 
@@ -111,15 +237,28 @@ export default function QuestionnaireEngine() {
     }
   };
 
-  const handleDelete = async (topic: any) => {
-    if (!confirm(`Are you sure you want to delete ${topic.name}?`)) return;
+  const handleDelete = (topic: any) => {
+    setTopicToDelete(topic);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!topicToDelete) return;
 
     try {
-      await deleteMaterialTopic(topic.id);
+      await deleteMaterialTopic(topicToDelete.id);
 
       toast({
         title: "Topic Deleted",
-        description: `${topic.name} has been deleted.`,
+        description: `${topicToDelete.name} has been deleted.`,
+      });
+      
+      // Log to blockchain
+      await logToBlockchain('material_topic_deleted', {
+        topicId: topicToDelete.id,
+        topicName: topicToDelete.name,
+        category: topicToDelete.category,
+        griCode: topicToDelete.gri_code,
       });
     } catch (error: any) {
       toast({
@@ -127,6 +266,9 @@ export default function QuestionnaireEngine() {
         description: error.message || "Failed to delete topic",
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setTopicToDelete(null);
     }
   };
 
@@ -204,6 +346,15 @@ export default function QuestionnaireEngine() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Blockchain Verification - Only show for non-demo clients */}
+      {activeClient && activeClient.status !== 'demo' && (
+        <BlockchainVerificationCard 
+          logs={blockchainLogs}
+          isLogging={isLoggingToBlockchain}
+          module="Questionnaire Engine"
+        />
+      )}
 
       {/* Add/Edit Form */}
       {isFormOpen && (
@@ -433,6 +584,27 @@ export default function QuestionnaireEngine() {
         </TabsContent>
       </Tabs>
 
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Material Topic</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{topicToDelete?.name}</strong>? 
+              This action cannot be undone and will remove all associated questionnaire responses.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
