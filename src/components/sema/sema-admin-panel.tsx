@@ -14,9 +14,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useSema } from './sema-context';
 import { useToast } from '@/hooks/use-toast';
 import { Settings, Plus, CreditCard as Edit, Trash2, Building, Users, FileText, Database } from 'lucide-react';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { logCertificateOnChain } from '@/lib/solana-nft';
+import CryptoJS from 'crypto-js';
+import { BlockchainVerificationCard } from './blockchain-verification-card';
 
 // If you have a SemaClient type, import it here
 // import type { SemaClient } from '@/types/sema';
@@ -31,15 +45,26 @@ export default function SemaAdminPanel({
   setIsOpenClientForm,
 }: SemaAdminPanelProps) {
   const { toast } = useToast();
-  const { clients } = useSema();
+  const { clients, addClient, updateClient, deleteClient, reloadClients, activeClient } = useSema();
+  const { wallets } = useWallets();
 
-  // Remove internal isFormOpen state, use props instead
-  // const [isFormOpen, setIsFormOpen] = useState(false);
-
-  // If you have a SemaClient type, use it instead of any
   const [editingClient, setEditingClient] = useState<any | null>(null);
-
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<any | null>(null);
+  
+  // Blockchain logging state
+  const [blockchainLogs, setBlockchainLogs] = useState<Array<{
+    transactionSignature: string;
+    action: string;
+    dataHash: string;
+    timestamp: string;
+    status: 'pending' | 'success' | 'error';
+    error?: string;
+  }>>([]);
+  const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,6 +73,99 @@ export default function SemaAdminPanel({
     size: 'Medium' as 'Small' | 'Medium' | 'Large' | 'Enterprise',
     status: 'active' as 'active' | 'inactive'
   });
+
+  // Log action to Solana blockchain
+  const logToBlockchain = async (action: string, clientData: any) => {
+    if (!wallets || wallets.length === 0) {
+      console.warn('No wallet connected, skipping blockchain log');
+      return;
+    }
+
+    // Don't log for demo clients
+    if (clientData.status === 'demo') {
+      return;
+    }
+
+    setIsLoggingToBlockchain(true);
+
+    try {
+      const wallet = wallets[0];
+      
+      // Create detailed audit log data
+      const logData = {
+        type: 'SEMA_AUDIT_LOG',
+        version: '1.0',
+        application: 'ClimeMate SEMA Tools',
+        module: 'Client Management',
+        action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        details: {
+          clientId: clientData.id,
+          clientName: clientData.name,
+          industry: clientData.industry,
+          size: clientData.size,
+          status: clientData.status,
+        },
+        timestamp: new Date().toISOString(),
+        user: wallet.address,
+      };
+      
+      const dataHash = CryptoJS.SHA256(JSON.stringify(logData)).toString();
+
+      // Add pending log
+      const pendingLog = {
+        transactionSignature: '',
+        action,
+        dataHash,
+        timestamp: new Date().toISOString(),
+        status: 'pending' as const,
+      };
+      
+      setBlockchainLogs(prev => [pendingLog, ...prev]);
+
+      // Log to Solana
+      const logResult = await logCertificateOnChain(
+        wallet.address,
+        logData,
+        async (txData: any) => {
+          const result = await wallet.signAndSendTransaction(txData);
+          return result;
+        }
+      );
+
+      if (logResult.success) {
+        // Update log with success
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, transactionSignature: logResult.signature, status: 'success' as const }
+              : log
+          )
+        );
+      } else {
+        // Update log with error
+        setBlockchainLogs(prev => 
+          prev.map((log, index) => 
+            index === 0 
+              ? { ...log, status: 'error' as const, error: logResult.error || 'Failed to log' }
+              : log
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to log to blockchain:', error);
+      
+      // Update log with error
+      setBlockchainLogs(prev => 
+        prev.map((log, index) => 
+          index === 0 
+            ? { ...log, status: 'error' as const, error: error.message || 'Unknown error' }
+            : log
+        )
+      );
+    } finally {
+      setIsLoggingToBlockchain(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -79,20 +197,40 @@ export default function SemaAdminPanel({
     setIsLoading(true);
 
     try {
+      const action = editingClient ? 'client_updated' : 'client_added';
+      
       if (editingClient) {
-        // Mock update for demo
+        await updateClient(editingClient.id, formData);
         toast({
           title: "Client Updated",
           description: `${formData.name} has been updated successfully.`,
         });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          id: editingClient.id,
+          name: formData.name,
+          industry: formData.industry,
+          size: formData.size,
+        });
       } else {
-        // Mock creation for demo
-
+        const newClient = await addClient(formData);
         toast({
           title: "Client Added",
           description: `${formData.name} has been added successfully.`,
         });
+        
+        // Log to blockchain
+        await logToBlockchain(action, {
+          id: newClient.id,
+          name: formData.name,
+          industry: formData.industry,
+          size: formData.size,
+        });
       }
+      
+      // Reload clients to refresh the list
+      await reloadClients();
       resetForm();
     } catch (error: any) {
       toast({
@@ -105,7 +243,7 @@ export default function SemaAdminPanel({
     }
   };
 
-  const handleDelete = async (client: any) => {
+  const handleDeleteClick = (client: any) => {
     if (client.status === 'demo') {
       toast({
         title: "Cannot Delete",
@@ -115,20 +253,39 @@ export default function SemaAdminPanel({
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete ${client.name}?`)) return;
+    setClientToDelete(client);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!clientToDelete) return;
 
     try {
-      // Mock deletion for demo
+      await deleteClient(clientToDelete.id);
       toast({
         title: "Client Deleted",
-        description: `${client.name} has been deleted.`,
+        description: `${clientToDelete.name} has been deleted.`,
       });
+      
+      // Log to blockchain
+      await logToBlockchain('client_deleted', {
+        id: clientToDelete.id,
+        name: clientToDelete.name,
+        industry: clientToDelete.industry,
+        size: clientToDelete.size,
+      });
+      
+      // Reload clients to refresh the list
+      await reloadClients();
     } catch (error: any) {
       toast({
         title: "Error",
         description: error.message || "Failed to delete client",
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setClientToDelete(null);
     }
   };
 
@@ -240,6 +397,13 @@ export default function SemaAdminPanel({
             </Card>
           )}
 
+          {/* Blockchain Verification */}
+          <BlockchainVerificationCard 
+            logs={blockchainLogs}
+            isLogging={isLoggingToBlockchain}
+            module="Client Management"
+          />
+
           {/* Clients List */}
           <Card>
             <CardHeader>
@@ -266,16 +430,19 @@ export default function SemaAdminPanel({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {clients.map((client) => (
+                  {clients.map((client) => {
+                    const isActiveClient = activeClient?.id === client.id;
+                    return (
                     <div key={client.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium">{client.name}</h4>
-                          <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
-                            {client.status}
-                          </Badge>
-                          {client.status === 'demo' && (
+                          {client.status === 'demo' ? (
                             <Badge variant="outline">Demo</Badge>
+                          ) : (
+                            <Badge variant={isActiveClient ? 'default' : 'secondary'}>
+                              {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                            </Badge>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">{client.description}</p>
@@ -296,14 +463,15 @@ export default function SemaAdminPanel({
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(client)}
+                          onClick={() => handleDeleteClick(client)}
                           disabled={client.status === 'demo'}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -421,6 +589,29 @@ export default function SemaAdminPanel({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Client</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{clientToDelete?.name}</strong>? 
+              This action cannot be undone and will remove all associated data including stakeholders, 
+              topics, and reports.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
