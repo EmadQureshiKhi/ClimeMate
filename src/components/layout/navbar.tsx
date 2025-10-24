@@ -35,7 +35,8 @@ import {
   Mail,
   CheckCircle,
   CreditCard,
-  ExternalLink
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -179,6 +180,12 @@ function AuthButton() {
         <DropdownMenuItem onClick={() => router.push('/settings')}>
           <User className="h-4 w-4 mr-2" />
           Profile Settings
+        </DropdownMenuItem>
+
+        {/* Audit Logs */}
+        <DropdownMenuItem onClick={() => router.push('/logs')}>
+          <FileText className="h-4 w-4 mr-2" />
+          Audit Logs
         </DropdownMenuItem>
 
         {/* Coming Soon Options */}
