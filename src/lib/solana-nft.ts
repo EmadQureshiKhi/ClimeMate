@@ -1,5 +1,6 @@
 import { Connection, PublicKey, Transaction, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { sendTransactionWithGateway, buildGatewayTransaction, logGatewayIntegration } from './sanctum-gateway';
 
 // Solana configuration
 const SOLANA_NETWORK = (process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta';
@@ -141,49 +142,23 @@ export async function mintCertificateNFT(
     transaction.feePayer = new PublicKey(walletAddress);
     transaction.lastValidBlockHeight = lastValidBlockHeight;
     
-    console.log('📦 Transaction created, serializing...');
+    console.log('📦 Transaction created, using Gateway for optimal delivery...');
     
-    const serializedTransaction = transaction.serialize({
-      requireAllSignatures: false,
-      verifySignatures: false,
+    // Send via Gateway for better delivery and cost savings
+    const gatewayResult = await sendTransactionWithGateway({
+      transaction,
+      walletAddress,
+      signAndSendTransaction,
+      connection,
     });
     
-    console.log('✍️ Signing and sending transaction...');
-    
-    const result = await signAndSendTransaction({
-      transaction: serializedTransaction,
-      chain: `solana:${SOLANA_NETWORK}`,
-    });
-    
-    console.log('✅ Transaction result:', result);
-    
-    // Extract signature
-    let signature: string;
-    
-    if (typeof result === 'string') {
-      signature = result;
-    } else if (result && typeof result === 'object') {
-      const sig = (result as any).signature;
-      
-      if (typeof sig === 'string') {
-        signature = sig;
-      } else if (sig && typeof sig === 'object' && sig.type === 'Buffer' && Array.isArray(sig.data)) {
-        const buffer = Buffer.from(sig.data);
-        signature = bs58.encode(buffer);
-        console.log('✅ Converted Buffer to base58 signature:', signature);
-      } else if (Buffer.isBuffer(sig)) {
-        signature = bs58.encode(sig);
-        console.log('✅ Converted Buffer to base58 signature:', signature);
-      } else {
-        throw new Error(`Invalid signature format: ${JSON.stringify(sig)}`);
-      }
-    } else {
-      throw new Error(`Invalid result format: ${JSON.stringify(result)}`);
+    if (!gatewayResult.success) {
+      throw new Error(gatewayResult.error || 'Gateway transaction failed');
     }
     
-    if (!signature || typeof signature !== 'string') {
-      throw new Error(`Failed to extract signature from result: ${JSON.stringify(result)}`);
-    }
+    const signature = gatewayResult.signature!;
+    console.log('✅ Transaction sent via Gateway:', signature);
+    console.log('💰 Cost savings:', gatewayResult.costSavings, 'lamports');
     
     console.log('✅ Certificate NFT transaction completed!');
     console.log('📝 Transaction:', signature);
@@ -237,6 +212,9 @@ export async function logCertificateOnChain(
   try {
     console.log('📝 Logging data on Solana blockchain...');
     
+    // Log Gateway integration
+    logGatewayIntegration();
+    
     // Use the provided log data directly (already formatted by caller)
     const logString = JSON.stringify(logData);
     console.log('📋 Log message:', logString);
@@ -263,50 +241,28 @@ export async function logCertificateOnChain(
     transaction.feePayer = new PublicKey(walletAddress);
     transaction.lastValidBlockHeight = lastValidBlockHeight;
     
-    console.log('📦 Memo transaction created, serializing...');
+    console.log('📦 Memo transaction created, using Gateway for optimal delivery...');
     
-    // Serialize transaction
-    const serializedTransaction = transaction.serialize({
-      requireAllSignatures: false,
-      verifySignatures: false,
+    // Send via Gateway for better delivery and cost savings
+    const gatewayResult = await sendTransactionWithGateway({
+      transaction,
+      walletAddress,
+      signAndSendTransaction,
+      connection,
     });
     
-    console.log('✍️ Signing and sending memo transaction...');
-    
-    // Sign and send transaction
-    const result = await signAndSendTransaction({
-      transaction: serializedTransaction,
-      chain: `solana:${SOLANA_NETWORK}`,
-    });
-    
-    // Extract signature
-    let signature: string;
-    
-    if (typeof result === 'string') {
-      signature = result;
-    } else if (result && typeof result === 'object') {
-      const sig = (result as any).signature;
-      
-      if (typeof sig === 'string') {
-        signature = sig;
-      } else if (sig && typeof sig === 'object' && sig.type === 'Buffer' && Array.isArray(sig.data)) {
-        const buffer = Buffer.from(sig.data);
-        signature = bs58.encode(buffer);
-      } else if (Buffer.isBuffer(sig)) {
-        signature = bs58.encode(sig);
-      } else {
-        throw new Error(`Invalid signature format: ${JSON.stringify(sig)}`);
-      }
-    } else {
-      throw new Error(`Invalid result format: ${JSON.stringify(result)}`);
+    if (!gatewayResult.success) {
+      throw new Error(gatewayResult.error || 'Gateway transaction failed');
     }
     
-    console.log('✅ Certificate logged on-chain! Signature:', signature);
-    console.log('🔍 View on Solscan:', getExplorerUrl(signature));
+    console.log('✅ Certificate logged on-chain via Gateway!');
+    console.log('📝 Signature:', gatewayResult.signature);
+    console.log('💰 Cost savings:', gatewayResult.costSavings, 'lamports');
+    console.log('🔍 View on Solscan:', getExplorerUrl(gatewayResult.signature!));
     
     return {
       success: true,
-      signature,
+      signature: gatewayResult.signature,
     };
   } catch (error: any) {
     console.error('❌ Error logging certificate on-chain:', error);
