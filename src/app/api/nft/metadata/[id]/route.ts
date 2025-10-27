@@ -8,12 +8,17 @@ export async function GET(
   try {
     const { id: certificateId } = await params;
 
+    // Check if this is an offset certificate (ends with -OFFSET)
+    const isOffsetCert = certificateId.endsWith('-OFFSET');
+    const baseCertificateId = isOffsetCert ? certificateId.replace('-OFFSET', '') : certificateId;
+
     // Fetch certificate from database
     const certificate = await prisma.certificate.findUnique({
-      where: { certificateId },
+      where: { certificateId: baseCertificateId },
       select: {
         certificateId: true,
         totalEmissions: true,
+        offsetAmount: true,
         createdAt: true,
         issueDate: true,
         validUntil: true,
@@ -40,23 +45,38 @@ export async function GET(
     const totalRows = summary?.totalRows || 0;
 
     // Check if this is a GHG Calculator certificate
-    const isGHGCalc = certificateId.startsWith('GHG-CALC-');
+    const isGHGCalc = baseCertificateId.startsWith('GHG-CALC-');
+    
+    // Calculate offset percentage if this is an offset certificate
+    const offsetAmount = certificate.offsetAmount || 0;
+    const offsetPercentage = certificate.totalEmissions > 0 
+      ? ((offsetAmount / certificate.totalEmissions) * 100).toFixed(2)
+      : '0.00';
     
     // Create NFT metadata with comprehensive attributes
     const metadata = {
-      name: isGHGCalc ? `GHG Calculator Certificate` : `Carbon Certificate ${certificateId}`,
+      name: isOffsetCert 
+        ? `Offset Certificate ${baseCertificateId} (${offsetPercentage}%)`
+        : isGHGCalc 
+          ? `GHG Calculator Certificate` 
+          : `Carbon Certificate ${baseCertificateId}`,
       symbol: 'CARBON',
-      description: isGHGCalc 
-        ? `GHG Calculator verified certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`
-        : `Verified carbon footprint certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`,
+      description: isOffsetCert
+        ? `Carbon offset certificate documenting ${offsetAmount.toFixed(2)} kg CO₂e retired (${offsetPercentage}% of ${certificate.totalEmissions.toFixed(2)} kg CO₂e total emissions) across ${categories} categories from ${totalRows} activities.`
+        : isGHGCalc 
+          ? `GHG Calculator verified certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`
+          : `Verified carbon footprint certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`,
       image: 'https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png',
-      external_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificates/${certificateId}`,
+      external_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificates/${baseCertificateId}`,
       attributes: [
         {
           trait_type: 'Certificate ID',
-          value: certificateId,
+          value: baseCertificateId,
         },
-        ...(isGHGCalc ? [{
+        ...(isOffsetCert ? [{
+          trait_type: 'Certificate Type',
+          value: 'Offset Certificate',
+        }] : isGHGCalc ? [{
           trait_type: 'Certificate Type',
           value: 'GHG Calculator',
         }] : []),
@@ -65,6 +85,22 @@ export async function GET(
           value: certificate.totalEmissions.toFixed(2),
           display_type: 'number',
         },
+        ...(isOffsetCert ? [
+          {
+            trait_type: 'Offset Amount (kg CO₂e)',
+            value: offsetAmount.toFixed(2),
+            display_type: 'number',
+          },
+          {
+            trait_type: 'Offset Percentage',
+            value: `${offsetPercentage}%`,
+          },
+          {
+            trait_type: 'Remaining Emissions (kg CO₂e)',
+            value: (certificate.totalEmissions - offsetAmount).toFixed(2),
+            display_type: 'number',
+          },
+        ] : []),
         {
           trait_type: 'Issue Date',
           value: (certificate.issueDate || certificate.createdAt).toISOString().split('T')[0],
