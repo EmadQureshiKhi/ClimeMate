@@ -11,6 +11,8 @@
     "api": "tsx watch src/api/server.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.29.0",
+    "@coral-xyz/borsh": "^0.29.0",
     "@fastify/cors": "^8.5.0",
     "@hookform/resolvers": "^3.3.2",
     "@metaplex-foundation/mpl-bubblegum": "^1.0.1",
