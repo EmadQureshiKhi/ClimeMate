@@ -70,6 +70,12 @@ export default function LogsPage() {
     });
   };
 
+  const formatModuleName = (module: string) => {
+    // Format module names properly
+    if (module === 'MARKETPLACE') return 'Marketplace';
+    return module;
+  };
+
   const getModuleColor = (module: string) => {
     const colors: Record<string, string> = {
       'Admin Panel': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
@@ -79,11 +85,15 @@ export default function LogsPage() {
       'Internal Assessment': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
       'Reporting Dashboard': 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
       'Certificate': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+      'MARKETPLACE': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+      'Marketplace': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
     };
     return colors[module] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
   };
 
-  const getActionIcon = (action: string) => {
+  const getActionIcon = (action: string, module: string) => {
+    // Marketplace purchases use + icon
+    if (module === 'MARKETPLACE' || module === 'Marketplace') return '➕';
     if (action.includes('certificate') || action.includes('created') || action.includes('added')) return '➕';
     if (action.includes('updated')) return '✏️';
     if (action.includes('deleted')) return '🗑️';
@@ -225,7 +235,7 @@ export default function LogsPage() {
                   size="sm"
                   onClick={() => setFilterModule(module)}
                 >
-                  {module === 'all' ? 'All Modules' : module}
+                  {module === 'all' ? 'All Modules' : formatModuleName(module)}
                   {module !== 'all' && (
                     <Badge variant="secondary" className="ml-2">
                       {logs.filter(l => l.module === module).length}
@@ -266,11 +276,11 @@ export default function LogsPage() {
                     {/* Log Header */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-start gap-3 flex-1">
-                        <div className="text-2xl mt-1">{getActionIcon(log.action)}</div>
+                        <div className="text-2xl mt-1">{getActionIcon(log.action, log.module)}</div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <Badge className={getModuleColor(log.module)}>
-                              {log.module}
+                              {formatModuleName(log.module)}
                             </Badge>
                             <span className="text-sm font-medium">{log.action}</span>
                           </div>
