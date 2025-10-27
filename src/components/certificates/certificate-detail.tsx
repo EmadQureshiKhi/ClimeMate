@@ -24,8 +24,16 @@ import {
   Wallet,
   ShoppingCart,
   History,
-  Clock
+  Clock,
+  Flame,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
+import { useRetirement } from '@/hooks/useRetirement';
+import { useEscrow } from '@/hooks/useEscrow';
+import { useAuth } from '@/hooks/useAuth';
+import { Progress } from '@/components/ui/progress';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { getExplorerUrl } from '@/lib/solana-nft';
@@ -36,14 +44,27 @@ interface CertificateDetailProps {
   certificateId: string;
 }
 
+// Helper function for PDF download
+const downloadCertificatePDF = (certificate: any) => {
+  // TODO: Implement PDF generation
+  console.log('Download PDF for certificate:', certificate.certificateId);
+};
+
 export function CertificateDetail({ certificateId }: CertificateDetailProps) {
   const [copied, setCopied] = useState(false);
   const [showRetirementForm, setShowRetirementForm] = useState(false);
-  const [retirementAmount, setRetirementAmount] = useState<number>(0);
+  const [showRetirementHistory, setShowRetirementHistory] = useState(false);
+  const [retirementAmount, setRetirementAmount] = useState<string>('');
   const [certificate, setCertificate] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [retirementHistory, setRetirementHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isMintingCertificate, setIsMintingCertificate] = useState(false);
 
   const { toast } = useToast();
+  const { retireCredits, isRetiring, calculateRetirementStatus } = useRetirement();
+  const escrow = useEscrow();
+  const { walletAddress } = useAuth();
   
   // Fetch certificate data
   React.useEffect(() => {
@@ -64,12 +85,54 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
     
     fetchCertificate();
   }, [certificateId]);
+
+  // Fetch retirement history from audit logs
+  const fetchRetirementHistory = async () => {
+    if (!certificate || !walletAddress) return;
+    
+    try {
+      setIsLoadingHistory(true);
+      
+      // Fetch logs for this wallet address
+      const response = await fetch(`/api/audit-logs?walletAddress=${walletAddress}`);
+      if (response.ok) {
+        const data = await response.json();
+        // Filter for retirement actions for this certificate
+        const retirements = data.logs?.filter((log: any) => 
+          log.action === 'RETIRE_CREDITS' && 
+          log.details?.certificateId === certificateId
+        ) || [];
+        
+        console.log('📊 Retirement history:', {
+          walletAddress,
+          totalLogs: data.logs?.length,
+          retirements: retirements.length,
+          certificateId,
+        });
+        
+        setRetirementHistory(retirements);
+      }
+    } catch (error) {
+      console.error('Failed to fetch retirement history:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  // Fetch history when dropdown is opened
+  React.useEffect(() => {
+    if (showRetirementHistory && certificate) {
+      fetchRetirementHistory();
+    }
+  }, [showRetirementHistory, certificate]);
   
   const retirementTransactions: any[] = [];
   const isLoadingRetirements = false;
 
   const handleRetireCredits = async () => {
-    if (retirementAmount <= 0) {
+    const amount = parseFloat(retirementAmount);
+    
+    if (!amount || amount <= 0) {
       toast({
         title: "Invalid Amount",
         description: "Please enter a valid retirement amount",
@@ -78,23 +141,106 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
       return;
     }
 
-    try {
-      // Mock retirement for demo
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
+    if (amount > certificate.totalEmissions) {
       toast({
-        title: "Retirement Initiated!",
-        description: `Successfully initiated retirement of ${retirementAmount} CO2e credits. Blockchain verification coming soon!`,
-      });
-
-      setShowRetirementForm(false);
-      setRetirementAmount(0);
-    } catch (error: any) {
-      toast({
-        title: "Retirement Failed",
-        description: error.message || "Failed to retire carbon credits",
+        title: "Amount Too Large",
+        description: `Cannot retire more than total emissions (${certificate.totalEmissions} kg CO₂e)`,
         variant: "destructive",
       });
+      return;
+    }
+
+    const currentOffset = certificate.offsetAmount || 0;
+    if (currentOffset + amount > certificate.totalEmissions) {
+      toast({
+        title: "Amount Too Large",
+        description: `Can only retire ${(certificate.totalEmissions - currentOffset).toFixed(2)} more kg CO₂e`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const result = await retireCredits(
+        certificateId,
+        amount,
+        certificate.totalEmissions
+      );
+
+      if (result.success) {
+        // Refresh certificate data
+        const response = await fetch(`/api/certificates/${certificateId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setCertificate(data.certificate);
+        }
+        
+        setShowRetirementForm(false);
+        setRetirementAmount('');
+        
+        // Refresh history if it's open
+        if (showRetirementHistory) {
+          fetchRetirementHistory();
+        }
+      }
+    } catch (error: any) {
+      console.error('Retirement error:', error);
+    }
+  };
+
+  const handleMintCertificate = async () => {
+    if (!certificate) return;
+
+    setIsMintingCertificate(true);
+
+    try {
+      const response = await fetch(`/api/certificates/${certificateId}/mint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          walletAddress,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to mint certificate');
+      }
+
+      const data = await response.json();
+
+      toast({
+        title: '🎉 Certificate Minted!',
+        description: (
+          <div className="space-y-1">
+            <p>Your offset certificate NFT has been minted! {((certificate.offsetAmount / certificate.totalEmissions) * 100).toFixed(1)}% offset recorded.</p>
+            <a 
+              href={`https://solscan.io/tx/${data.signature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs underline"
+            >
+              View on Solscan
+            </a>
+          </div>
+        ),
+      });
+
+      // Refresh certificate data
+      const certResponse = await fetch(`/api/certificates/${certificateId}`);
+      if (certResponse.ok) {
+        const certData = await certResponse.json();
+        setCertificate(certData.certificate);
+      }
+    } catch (error: any) {
+      console.error('Minting error:', error);
+      toast({
+        title: 'Minting Failed',
+        description: error.message || 'Failed to mint certificate',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsMintingCertificate(false);
     }
   };
 
@@ -293,82 +439,267 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
       </Card>
 
       {/* Carbon Credit Retirement Section */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800">
+      <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 border-green-200 dark:border-green-800">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-            <Target className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
+            <Flame className="h-5 w-5" />
             Offset This Certificate
           </CardTitle>
           <CardDescription>
-            Retire carbon credits to offset the emissions in this certificate (Blockchain integration coming soon)
+            Retire CO₂e tokens to permanently offset the emissions in this certificate
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
-              <p className="text-sm text-muted-foreground">Certificate Emissions</p>
-              <p className="text-xl font-bold">{certificate.totalEmissions.toLocaleString()} kg CO₂e</p>
-            </div>
-            <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
-              <p className="text-sm text-muted-foreground">Status</p>
-              <p className="text-xl font-bold text-green-600 capitalize">
-                {certificate.status}
-              </p>
-            </div>
-            <div className="bg-white dark:bg-gray-900 p-4 rounded-lg">
-              <p className="text-sm text-muted-foreground">Issue Date</p>
-              <p className="text-xl font-bold text-blue-600">
-                {format(new Date(certificate.issueDate), 'MMM dd, yyyy')}
-              </p>
+          {/* Offset Progress */}
+          {(() => {
+            const offsetAmount = certificate.offsetAmount || 0;
+            const { status, percentage, remaining } = calculateRetirementStatus(
+              certificate.totalEmissions,
+              offsetAmount
+            );
+            
+            return (
+              <div className="bg-white dark:bg-gray-900 p-6 rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Offset Progress</p>
+                    <p className="text-2xl font-bold text-green-600">{percentage}%</p>
+                  </div>
+                  <Badge 
+                    className={
+                      status === 'fully_offset' 
+                        ? 'bg-green-600' 
+                        : status === 'partially_offset'
+                        ? 'bg-yellow-600'
+                        : 'bg-gray-600'
+                    }
+                  >
+                    {status === 'fully_offset' ? '✓ Fully Offset' : 
+                     status === 'partially_offset' ? 'Partially Offset' : 
+                     'Not Offset'}
+                  </Badge>
+                </div>
+                <Progress value={percentage} className="h-3" />
+                <div className="grid gap-4 md:grid-cols-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Total Emissions</p>
+                    <p className="font-bold">{certificate.totalEmissions.toFixed(2)} kg CO₂e</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Offset Amount</p>
+                    <p className="font-bold text-green-600">{offsetAmount.toFixed(2)} kg CO₂e</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Remaining</p>
+                    <p className="font-bold text-orange-600">{remaining.toFixed(2)} kg CO₂e</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* User Balance */}
+          <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">Your CO₂e Balance</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {escrow.loading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      `${escrow.userBalance.toFixed(2)} CO₂e`
+                    )}
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => escrow.refresh()} 
+                  disabled={escrow.loading}
+                  title="Refresh balance"
+                >
+                  <RefreshCw className={`h-4 w-4 ${escrow.loading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/marketplace">
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  Buy More
+                </Link>
+              </Button>
             </div>
           </div>
 
-          {!showRetirementForm ? (
-            <div className="text-center">
-              <Button 
-                onClick={() => setShowRetirementForm(true)}
-                className="bg-blue-600 hover:bg-blue-700"
+          {/* Retirement History Dropdown */}
+          {certificate.offsetAmount > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg border">
+              <button
+                onClick={() => setShowRetirementHistory(!showRetirementHistory)}
+                className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
               >
-                <Leaf className="h-4 w-4 mr-2" />
-                Retire Carbon Credits
-              </Button>
-              <p className="text-sm text-muted-foreground mt-2">
-                Carbon credit retirement available in demo mode
-              </p>
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-blue-600" />
+                  <span className="font-medium">Retirement History</span>
+                  <Badge variant="secondary">{retirementHistory.length}</Badge>
+                </div>
+                {showRetirementHistory ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+              
+              {showRetirementHistory && (
+                <div className="border-t p-4 space-y-3">
+                  {isLoadingHistory ? (
+                    <div className="text-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                    </div>
+                  ) : retirementHistory.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No retirement history found
+                    </p>
+                  ) : (
+                    retirementHistory.map((log, index) => (
+                      <div key={log.id} className="bg-muted/50 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center text-green-600 font-bold text-xs">
+                              {retirementHistory.length - index}
+                            </div>
+                            <span className="font-medium text-sm">
+                              {log.details?.amount} kg CO₂e retired
+                            </span>
+                          </div>
+                          <Badge variant="secondary" className="text-xs">
+                            {log.details?.offsetPercentage}%
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{format(new Date(log.createdAt), 'PPp')}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => window.open(`https://solscan.io/tx/${log.transactionSignature}?cluster=devnet`, '_blank')}
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View Transaction
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          {!showRetirementForm ? (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setShowRetirementForm(true)}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  disabled={certificate.offsetAmount >= certificate.totalEmissions}
+                >
+                  <Flame className="h-4 w-4 mr-2" />
+                  Retire CO₂e Credits
+                </Button>
+                
+                <Button
+                  onClick={handleMintCertificate}
+                  disabled={certificate.offsetAmount === 0 || isMintingCertificate}
+                  className="flex-1"
+                  variant="outline"
+                  title={certificate.offsetAmount > 0 ? "Mint NFT certificate with current offset progress" : "Offset some credits first to mint certificate"}
+                >
+                  {isMintingCertificate ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Minting...
+                    </>
+                  ) : (
+                    <>
+                      <Award className="h-4 w-4 mr-2" />
+                      Mint Certificate NFT
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {certificate.offsetAmount >= certificate.totalEmissions && (
+                <p className="text-sm text-green-600 font-medium text-center">
+                  ✓ Certificate fully offset!
+                </p>
+              )}
+              
+              {certificate.offsetAmount === 0 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Mint certificate button will be enabled after you offset any amount
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="retirement-amount">Amount to Retire (kg CO₂e)</Label>
+                <Label htmlFor="retirement-amount">Amount to Retire (CO₂e tokens)</Label>
                 <Input
                   id="retirement-amount"
                   type="number"
-                  min="1"
-                  max={certificate.totalEmissions}
-                  value={retirementAmount || ''}
-                  onChange={(e) => setRetirementAmount(parseInt(e.target.value) || 0)}
+                  min="0.01"
+                  step="0.01"
+                  max={Math.min(
+                    escrow.userBalance,
+                    certificate.totalEmissions - (certificate.offsetAmount || 0)
+                  )}
+                  value={retirementAmount}
+                  onChange={(e) => setRetirementAmount(e.target.value)}
                   placeholder="Enter amount to retire"
+                  disabled={isRetiring}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Maximum: {certificate.totalEmissions.toLocaleString()} kg CO₂e
-                </p>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Your balance: {escrow.userBalance.toFixed(2)} CO₂e</span>
+                  <span>
+                    Can retire: {Math.min(
+                      escrow.userBalance,
+                      certificate.totalEmissions - (certificate.offsetAmount || 0)
+                    ).toFixed(2)} CO₂e
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-2">
                 <Button 
                   onClick={handleRetireCredits}
-                  disabled={retirementAmount <= 0}
-                  className="flex-1"
+                  disabled={!retirementAmount || parseFloat(retirementAmount) <= 0 || isRetiring}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
                 >
-                  <Target className="h-4 w-4 mr-2" />
-                  Retire {retirementAmount} Credits
+                  {isRetiring ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Retiring...
+                    </>
+                  ) : (
+                    <>
+                      <Flame className="h-4 w-4 mr-2" />
+                      Retire {retirementAmount || '0'} CO₂e
+                    </>
+                  )}
                 </Button>
                 <Button 
                   variant="outline" 
                   onClick={() => {
                     setShowRetirementForm(false);
-                    setRetirementAmount(0);
+                    setRetirementAmount('');
                   }}
+                  disabled={isRetiring}
                 >
                   Cancel
                 </Button>
@@ -378,12 +709,11 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
                   <div className="space-y-1">
-                    <p className="font-medium">Blockchain Integration Coming Soon:</p>
+                    <p className="font-medium">What happens when you retire:</p>
                     <ul className="text-sm space-y-1">
-                      <li>1. Connect blockchain wallet</li>
-                      <li>2. Purchase carbon credit tokens</li>
-                      <li>3. Burn tokens for retirement</li>
-                      <li>4. Update certificate status</li>
+                      <li>✓ CO₂e tokens are permanently burned</li>
+                      <li>✓ Certificate offset amount is updated</li>
+                      <li>✓ Transaction logged on Solana blockchain</li>
                     </ul>
                   </div>
                 </AlertDescription>
