@@ -60,16 +60,19 @@ model Certificate {
   certificateId   String   @unique // e.g., "GHG-2024-001"
   title           String
   totalEmissions  Float
+  offsetAmount    Float    @default(0) // Amount of CO₂e retired/offset
   breakdown       Json
   processedData   Json?    // Detailed emission activities
   summary         Json?    // Summary data (scope, categories, etc.)
-  status          String   @default("verified")
+  status          String   @default("verified") // verified, partially_offset, fully_offset
   issueDate       DateTime @default(now())
   validUntil      DateTime
   dataHash        String?  // For blockchain verification
   blockchainTx    String?  // Solana NFT transaction hash
-  nftAddress      String?  // Solana NFT mint address
-  metadataUri     String?  // NFT metadata URI
+  nftAddress      String?  // Solana NFT mint address (original certificate)
+  nftMintAddress  String?  // Solana NFT mint address (offset certificate)
+  nftMetadataUri  String?  // NFT metadata URI (offset certificate)
+  metadataUri     String?  // NFT metadata URI (original)
   logTransactionSignature String? // Solana memo log transaction
   ipfsCid         String?  // IPFS metadata (legacy)
   createdAt       DateTime @default(now())
