@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useEscrow } from '@/hooks/useEscrow';
 import { 
   ShoppingCart, 
   Search, 
@@ -20,7 +21,8 @@ import {
   Wallet,
   Loader2,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Coins
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -28,8 +30,10 @@ export function Marketplace() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [purchasingCredit, setPurchasingCredit] = useState<string | null>(null);
+  const [purchaseAmount, setPurchaseAmount] = useState(100); // 1.00 CO₂e
   const { toast } = useToast();
   const { walletAddress } = useAuth();
+  const escrow = useEscrow();
   
   // Mock carbon credits data
   const credits = [
@@ -80,10 +84,8 @@ export function Marketplace() {
   }) || [];
 
   const handlePurchase = async (creditId: string, price: number) => {
-    // Check if wallet is connected - will show modal if not
-    const hasWallet = walletAddress !== undefined;
-    
-    if (!hasWallet) {
+    // Check if wallet is connected
+    if (!walletAddress) {
       toast({
         title: "Wallet Required",
         description: "Please link a Solana wallet to purchase carbon credits.",
@@ -92,18 +94,38 @@ export function Marketplace() {
       return;
     }
 
-    const amount = 100; // Default purchase amount
     setPurchasingCredit(creditId);
 
     try {
-      // Mock purchase for demo
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Calculate cost
+      const { costInSOL } = await escrow.getCost(purchaseAmount);
+
+      // Buy tokens from escrow
+      const result = await escrow.buyTokens(purchaseAmount);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Purchase failed');
+      }
 
       toast({
-        title: "Purchase Successful!",
-        description: `Successfully purchased ${amount} carbon credits. Blockchain integration coming soon!`,
+        title: "Purchase Successful! 🎉",
+        description: (
+          <div className="space-y-1">
+            <p>Bought {escrow.smallestUnitToTokens(purchaseAmount)} CO₂e tokens</p>
+            <p className="text-xs">Cost: {costInSOL.toFixed(5)} SOL</p>
+            <a 
+              href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs underline"
+            >
+              View on Solscan
+            </a>
+          </div>
+        ),
       });
     } catch (error: any) {
+      console.error('Purchase error:', error);
       toast({
         title: "Purchase Failed",
         description: error.message || "Failed to purchase carbon credits",
@@ -189,16 +211,43 @@ export function Marketplace() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-5">
-        <Card>
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Available Credits</p>
-                <p className="text-2xl font-bold">
-                  {credits?.reduce((sum, credit) => sum + credit.available, 0).toLocaleString()}
+                <p className="text-sm font-medium text-green-700">Available in Escrow</p>
+                <p className="text-2xl font-bold text-green-900">
+                  {escrow.loading ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    escrow.availableTokens.toLocaleString()
+                  )}
                 </p>
+                <p className="text-xs text-green-600 mt-1">CO₂e tokens</p>
               </div>
-              <Leaf className="h-8 w-8 text-green-600" />
+              <Coins className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-700">Your Balance</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {walletAddress ? (
+                    escrow.loading ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : (
+                      escrow.userBalance.toLocaleString()
+                    )
+                  ) : (
+                    '—'
+                  )}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">CO₂e tokens</p>
+              </div>
+              <Wallet className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
@@ -206,21 +255,15 @@ export function Marketplace() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Projects</p>
-                <p className="text-2xl font-bold">{credits?.length || 0}</p>
-              </div>
-              <ShoppingCart className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Avg. Price</p>
+                <p className="text-sm font-medium text-muted-foreground">Price per Token</p>
                 <p className="text-2xl font-bold">
-                  ${credits ? (credits.reduce((sum, credit) => sum + credit.price, 0) / credits.length).toFixed(2) : '0'}
+                  {escrow.loading ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    `${(escrow.pricePerToken / 1e9).toFixed(5)}`
+                  )}
                 </p>
+                <p className="text-xs text-muted-foreground mt-1">SOL</p>
               </div>
               <TrendingUp className="h-8 w-8 text-purple-600" />
             </div>
@@ -230,12 +273,29 @@ export function Marketplace() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Countries</p>
+                <p className="text-sm font-medium text-muted-foreground">Total Sold</p>
                 <p className="text-2xl font-bold">
-                  {new Set(credits?.map(credit => credit.location)).size || 0}
+                  {escrow.loading ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : (
+                    escrow.escrowState?.totalSold.toLocaleString() || '0'
+                  )}
                 </p>
+                <p className="text-xs text-muted-foreground mt-1">CO₂e tokens</p>
               </div>
-              <MapPin className="h-8 w-8 text-orange-600" />
+              <ShoppingCart className="h-8 w-8 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Network</p>
+                <p className="text-2xl font-bold">Devnet</p>
+                <p className="text-xs text-muted-foreground mt-1">Solana</p>
+              </div>
+              <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
             </div>
           </CardContent>
         </Card>
