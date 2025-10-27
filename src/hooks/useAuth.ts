@@ -21,6 +21,10 @@ export function useAuth() {
   // Debug: Log detected vs linked wallets
   if (solanaWallets.length > 0) {
     console.log('🔍 Detected Solana wallets:', solanaWallets.length);
+    console.log('🔍 Primary wallet:', primarySolanaWallet);
+    console.log('🔍 Has signTransaction?', primarySolanaWallet?.signTransaction !== undefined);
+  } else {
+    console.log('⚠️  No Solana wallets detected');
   }
 
   // Get wallet address - ONLY from linked accounts, not from detected wallets
@@ -105,5 +109,6 @@ export function useAuth() {
     wallets: solanaWallets,
     solanaWallets,
     solanaWallet: primarySolanaWallet,
+    hasSolanaWallet: solanaWallets.length > 0,
   };
 }

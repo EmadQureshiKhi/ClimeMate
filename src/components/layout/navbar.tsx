@@ -188,6 +188,13 @@ function AuthButton() {
           Audit Logs
         </DropdownMenuItem>
 
+        {/* Gateway Analytics */}
+        <DropdownMenuItem onClick={() => router.push('/gateway-analytics')}>
+          <BarChart3 className="h-4 w-4 mr-2 text-purple-600" />
+          <span>Gateway Analytics</span>
+          <Badge variant="outline" className="ml-auto text-xs bg-purple-500/10 text-purple-700 border-purple-500/20">New</Badge>
+        </DropdownMenuItem>
+
         {/* Coming Soon Options */}
         <DropdownMenuItem disabled className="opacity-50 cursor-not-allowed">
           <CreditCard className="h-4 w-4 mr-2" />
