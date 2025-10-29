@@ -37,7 +37,8 @@ import {
   CheckCircle,
   CreditCard,
   ExternalLink,
-  FileText
+  FileText,
+  ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -229,17 +230,21 @@ function AuthButton() {
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: BarChart3 },
-  { name: 'Upload Data', href: '/upload', icon: Upload },
   { name: 'Certificates', href: '/certificates', icon: Award },
   { name: 'Marketplace', href: '/marketplace', icon: ShoppingCart },
-  { name: 'EV Charging', href: '/ev-charging', icon: Zap },
-  { name: 'GHG Calculator', href: '/ghg-calculator', icon: Calculator },
-  { name: 'SEMA Tool', href: '/sema', icon: Target },
   { name: 'Verify', href: '/verify', icon: ShieldCheck },
+];
+
+const toolsDropdown = [
+  { name: 'Upload Data', href: '/upload', icon: Upload, description: 'Upload and manage your data' },
+  { name: 'GHG Calculator', href: '/ghg-calculator', icon: Calculator, description: 'Calculate greenhouse gas emissions' },
+  { name: 'SEMA Tool', href: '/sema', icon: Target, description: 'Social & environmental assessment' },
+  { name: 'EV Charging', href: '/ev-charging', icon: Zap, description: 'Track charging sessions and earn rewards' },
 ];
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
   const pathname = usePathname();
 
   return (
@@ -278,6 +283,88 @@ export function Navbar() {
                 </Link>
               );
             })}
+            
+            {/* Tools Dropdown */}
+            <DropdownMenu open={isToolsOpen} onOpenChange={setIsToolsOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  onMouseEnter={() => setIsToolsOpen(true)}
+                  onMouseLeave={() => setIsToolsOpen(false)}
+                  className={cn(
+                    'flex items-center space-x-2 text-sm font-medium transition-all hover:text-primary h-auto px-3 py-2 hover:bg-primary/5',
+                    toolsDropdown.some(tool => pathname.startsWith(tool.href))
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  <Settings className="h-4 w-4" />
+                  <span>Tools</span>
+                  <ChevronDown className={cn(
+                    'h-3 w-3 opacity-50 transition-transform',
+                    isToolsOpen && 'rotate-180'
+                  )} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent 
+                align="start" 
+                className="w-80 p-2 bg-background/95 backdrop-blur-xl border-border/50 shadow-xl"
+                onMouseEnter={() => setIsToolsOpen(true)}
+                onMouseLeave={() => setIsToolsOpen(false)}
+              >
+                <div>
+                  {toolsDropdown.map((tool, index) => {
+                    const ToolIcon = tool.icon;
+                    const isActive = pathname.startsWith(tool.href);
+                    return (
+                      <div key={tool.name}>
+                        <DropdownMenuItem asChild className="p-0">
+                          <Link
+                            href={tool.href}
+                            className={cn(
+                              'group flex items-start gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200',
+                              'hover:bg-green-50 dark:hover:bg-green-950/20',
+                              isActive && 'bg-green-50 dark:bg-green-950/20'
+                            )}
+                          >
+                            <div className={cn(
+                              'p-2 rounded-md transition-all mt-0.5',
+                              isActive 
+                                ? 'bg-green-100 dark:bg-green-900/30' 
+                                : 'bg-muted/50 group-hover:bg-green-100 dark:group-hover:bg-green-900/30'
+                            )}>
+                              <ToolIcon className={cn(
+                                'h-4 w-4 transition-colors',
+                                isActive ? 'text-green-700 dark:text-green-400' : 'group-hover:text-green-700 dark:group-hover:text-green-400'
+                              )} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  'font-medium text-sm transition-colors',
+                                  isActive ? 'text-green-700 dark:text-green-400' : 'group-hover:text-green-700 dark:group-hover:text-green-400'
+                                )}>
+                                  {tool.name}
+                                </span>
+                                {isActive && (
+                                  <div className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                {tool.description}
+                              </p>
+                            </div>
+                          </Link>
+                        </DropdownMenuItem>
+                        {index < toolsDropdown.length - 1 && (
+                          <div className="my-1 mx-3 border-t border-border/50" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Right side */}
@@ -315,6 +402,36 @@ export function Navbar() {
                         </Link>
                       );
                     })}
+                    
+                    {/* Tools Section */}
+                    <div className="pt-4">
+                      <div className="flex items-center space-x-2 px-2 mb-2">
+                        <Settings className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tools</span>
+                      </div>
+                      {toolsDropdown.map((tool) => {
+                        const ToolIcon = tool.icon;
+                        return (
+                          <Link
+                            key={tool.name}
+                            href={tool.href}
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                              'flex items-start space-x-3 text-sm font-medium transition-colors hover:text-primary p-2 rounded-md pl-4',
+                              pathname.startsWith(tool.href)
+                                ? 'text-primary bg-primary/10'
+                                : 'text-muted-foreground'
+                            )}
+                          >
+                            <ToolIcon className="h-5 w-5 mt-0.5" />
+                            <div className="flex flex-col">
+                              <span>{tool.name}</span>
+                              <span className="text-xs text-muted-foreground">{tool.description}</span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </SheetContent>

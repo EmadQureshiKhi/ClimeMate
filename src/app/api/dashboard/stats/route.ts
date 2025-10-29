@@ -48,9 +48,10 @@ export async function GET(request: NextRequest) {
 
     // Calculate stats
     const totalEmissions = certificates.reduce((sum, cert) => sum + cert.totalEmissions, 0);
-    const totalOffsets = carbonCredits.reduce((sum, credit) => sum + credit.amount, 0);
+    // Total offsets is the sum of offsetAmount from all certificates
+    const totalOffsets = certificates.reduce((sum, cert) => sum + cert.offsetAmount, 0);
     const certificateCount = certificates.length;
-    const transactionCount = carbonCredits.length;
+    const totalCreditsPurchased = carbonCredits.reduce((sum, credit) => sum + credit.amount, 0);
 
     // Build recent activity
     const recentActivity = [
@@ -74,6 +75,19 @@ export async function GET(request: NextRequest) {
         amount: credit.amount,
         txHash: credit.transactionHash || undefined,
       })),
+      // Add offset entries for certificates with offsetAmount > 0
+      ...certificates
+        .filter(cert => cert.offsetAmount > 0)
+        .map(cert => ({
+          id: `${cert.id}-offset`,
+          type: 'offset',
+          title: 'Credits Retired',
+          description: cert.title,
+          timestamp: cert.updatedAt.toISOString(),
+          status: 'completed',
+          amount: cert.offsetAmount,
+          txHash: cert.blockchainTx || undefined,
+        })),
     ]
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 10);
@@ -91,13 +105,9 @@ export async function GET(request: NextRequest) {
         return certDate >= monthStart && certDate <= monthEnd;
       });
 
-      const monthCredits = carbonCredits.filter(credit => {
-        const creditDate = new Date(credit.createdAt);
-        return creditDate >= monthStart && creditDate <= monthEnd;
-      });
-
       const emissions = monthCerts.reduce((sum, cert) => sum + cert.totalEmissions, 0);
-      const offsets = monthCredits.reduce((sum, credit) => sum + credit.amount, 0);
+      // Offsets are from the offsetAmount field in certificates
+      const offsets = monthCerts.reduce((sum, cert) => sum + cert.offsetAmount, 0);
 
       monthlyData.push({
         month: date.toLocaleDateString('en-US', { month: 'short' }),
@@ -112,7 +122,7 @@ export async function GET(request: NextRequest) {
         totalEmissions: Math.round(totalEmissions),
         offsetCredits: Math.round(totalOffsets),
         certificates: certificateCount,
-        marketplaceTransactions: transactionCount,
+        marketplaceTransactions: Math.round(totalCreditsPurchased), // Total credits purchased, not transaction count
         emissionsChange: 0, // Calculate based on previous period if needed
         offsetsChange: 0, // Calculate based on previous period if needed
       },

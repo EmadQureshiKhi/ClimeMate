@@ -52,11 +52,11 @@ export function StatsCards({ data }: StatsCardsProps) {
     },
     {
       title: 'Marketplace',
-      value: data.marketplaceTransactions.toString(),
-      description: 'Transactions',
+      value: `${data.marketplaceTransactions.toLocaleString()} kg`,
+      description: 'CO₂e credits purchased',
       icon: ShoppingCart,
       change: null,
-      changeLabel: 'This month',
+      changeLabel: 'Total purchased',
     },
   ];
 
