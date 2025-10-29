@@ -26,6 +26,14 @@ model User {
   ghgCalculations GHGCalculation[]
   semaAssessments SEMAAssessment[]
   semaClients     SEMAClient[]
+  
+  // DeCharge Relations
+  chargingSessions  ChargingSession[]
+  chargingPoints    ChargingPoints?
+  pointsRedemptions PointsRedemption[]
+  pointsListingsSeller PointsListing[] @relation("PointsSeller")
+  pointsListingsBuyer  PointsListing[] @relation("PointsBuyer")
+  virtualPlots     VirtualPlot[]
 
   @@index([privyId])
   @@index([email])
@@ -331,4 +339,403 @@ model SEMAReport {
 
   @@index([clientId])
   @@index([status])
+}
+
+// ============================================
+// DeCharge EV Charging Integration
+// ============================================
+
+// EV Charging Sessions
+model ChargingSession {
+  id            String    @id @default(cuid())
+  sessionId     String    @unique // DeCharge session ID
+  userId        String
+  userWallet    String
+  stationId     String    // Reference to station (no FK constraint)
+  energyUsed    Float     // kWh
+  co2eSaved     Float     // kg CO₂e
+  creditsEarned Float     // CO₂e tokens earned
+  pointsEarned  Int       // Charging points earned
+  startTime     DateTime
+  endTime       DateTime?
+  cost          Float     // Cost in fiat or tokens
+  paymentTx     String?   // Solana Pay transaction
+  mintTx        String?   // CO₂e token mint transaction
+  status        String    @default("active") // active, completed, cancelled
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([userWallet])
+  @@index([sessionId])
+  @@index([stationId])
+  @@index([status])
+}
+
+// EV Charging Stations
+model ChargingStation {
+  id            String   @id @default(cuid())
+  stationId     String   @unique // DeCharge station ID
+  name          String
+  location      Json     // { lat, lng, address, city, country }
+  power         Float    // kW
+  connectorType String   // Type 2, CCS, CHAdeMO, etc.
+  available     Boolean  @default(true)
+  totalSessions Int      @default(0)
+  totalEnergy   Float    @default(0) // Total kWh dispensed
+  totalCO2eSaved Float   @default(0) // Total CO₂e saved
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([stationId])
+  @@index([available])
+}
+
+// Charging Points (for marketplace)
+model ChargingPoints {
+  id          String   @id @default(cuid())
+  userId      String
+  userWallet  String
+  points      Int      @default(0) // Current balance
+  earned      Int      @default(0) // Total earned from charging
+  purchased   Int      @default(0) // Total purchased
+  spent       Int      @default(0) // Total spent
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId])
+  @@unique([userWallet])
+  @@index([userWallet])
+}
+
+// Points Marketplace Listings
+model PointsListing {
+  id            String    @id @default(cuid())
+  sellerId      String
+  sellerWallet  String
+  points        Int
+  pricePerPoint Float     // Price in CO₂e tokens
+  totalPrice    Float     // Total price
+  status        String    @default("active") // active, sold, cancelled
+  buyerId       String?
+  buyerWallet   String?
+  createdAt     DateTime  @default(now())
+  soldAt        DateTime?
+  updatedAt     DateTime  @updatedAt
+  
+  seller        User      @relation("PointsSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  buyer         User?     @relation("PointsBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  
+  @@index([sellerId])
+  @@index([sellerWallet])
+  @@index([status])
+}
+
+// Virtual DeCharge World - Plots
+model VirtualPlot {
+  id            String   @id @default(cuid())
+  plotId        String   @unique // e.g., "PLOT-001"
+  location      Json     // { x, y } coordinates on map
+  ownerId       String?
+  ownerWallet   String?
+  price         Float    // Price in CO₂e tokens
+  chargers      Int      @default(0) // Number of chargers installed
+  totalCharges  Int      @default(0) // Total charges at this plot
+  totalEarnings Float    @default(0) // Total earnings in CO₂e
+  nftMint       String?  // NFT representing plot ownership
+  forSale       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  owner         User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  chargers_list VirtualCharger[]
+  
+  @@index([ownerId])
+  @@index([ownerWallet])
+  @@index([forSale])
+}
+
+// Virtual Chargers
+model VirtualCharger {
+  id          String   @id @default(cuid())
+  chargerId   String   @unique // e.g., "CHARGER-001"
+  plotId      String
+  type        String   // basic, fast, ultra
+  power       Float    // kW
+  level       Int      @default(1) // 1-5, upgradeable
+  charges     Int      @default(0) // Total charges
+  earnings    Float    @default(0) // Total earnings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  plot        VirtualPlot @relation(fields: [plotId], references: [plotId], onDelete: Cascade)
+  
+  @@index([plotId])
+  @@index([chargerId])
+}
+
+
+// ============================================
+// DeCharge EV Charging Integration
+// ============================================
+
+
+
+// Points Redemptions
+model PointsRedemption {
+  id             String    @id @default(cuid())
+  userId         String
+  userWallet     String
+  rewardId       String
+  rewardName     String
+  rewardCategory String
+  pointsCost     Int
+  redemptionCode String?
+  status         String    @default("completed") // pending, completed, used, expired
+  expiresAt      DateTime?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userWallet])
+  @@index([status])
+}
+
+// ============================================
+// Phase 4: Virtual World & Gamification
+// ============================================
+
+// Virtual Profiles for gamification
+model VirtualProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  userWallet       String   @unique @map("user_wallet")
+  avatarType       String   @default("default") @map("avatar_type")
+  avatarColor      String   @default("#3B82F6") @map("avatar_color")
+  level            Int      @default(1)
+  experiencePoints Int      @default(0) @map("experience_points")
+  forestLevel      Int      @default(1) @map("forest_level")
+  treesPlanted     Int      @default(0) @map("trees_planted")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([userWallet])
+  @@index([level])
+  @@map("virtual_profiles")
+}
+
+// Achievements catalog
+model Achievement {
+  id               String   @id // e.g., "first-charge"
+  name             String
+  description      String
+  icon             String
+  category         String   // charging, environmental, social, gaming
+  requirementType  String   @map("requirement_type") // sessions, kwh, co2e, points, friends, games
+  requirementValue Int      @map("requirement_value")
+  rewardPoints     Int      @default(0) @map("reward_points")
+  rewardXp         Int      @default(50) @map("reward_xp")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+// User achievements tracking
+model UserAchievement {
+  id            String    @id @default(uuid()) @db.Uuid
+  userWallet    String    @map("user_wallet")
+  achievementId String    @map("achievement_id")
+  progress      Int       @default(0)
+  completed     Boolean   @default(false)
+  completedAt   DateTime? @map("completed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userWallet, achievementId])
+  @@index([userWallet])
+  @@index([completed])
+  @@index([achievementId])
+  @@map("user_achievements")
+}
+
+// Mini-game scores
+model GameScore {
+  id              String   @id @default(uuid()) @db.Uuid
+  userWallet      String   @map("user_wallet")
+  gameType        String   @map("game_type") // charging_race, forest_builder, energy_quiz
+  score           Int
+  durationSeconds Int?     @map("duration_seconds")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userWallet])
+  @@index([gameType])
+  @@index([createdAt])
+  @@map("game_scores")
+}
+
+// Social connections
+model UserFriend {
+  id           String    @id @default(uuid()) @db.Uuid
+  userWallet   String    @map("user_wallet")
+  friendWallet String    @map("friend_wallet")
+  status       String    @default("pending") // pending, accepted, blocked
+  createdAt    DateTime  @default(now()) @map("created_at")
+  acceptedAt   DateTime? @map("accepted_at")
+
+  @@unique([userWallet, friendWallet])
+  @@index([userWallet])
+  @@index([friendWallet])
+  @@index([status])
+  @@map("user_friends")
+}
+
+// ============================================
+// Phase 4F: Virtual Land Ownership System
+// ============================================
+
+// Virtual land plots (hexagons on world map)
+model VirtualLandPlot {
+  id                  Int       @id @default(autoincrement())
+  h3Index             String    @unique @map("h3_index")
+  centerLat           Decimal   @map("center_lat") @db.Decimal(10, 7)
+  centerLng           Decimal   @map("center_lng") @db.Decimal(10, 7)
+  resolution          Int       @default(8)
+  ownerWallet         String?   @map("owner_wallet")
+  nftMint             String?   @map("nft_mint")
+  purchasedAt         DateTime? @map("purchased_at")
+  purchasePriceSol    Decimal?  @map("purchase_price_sol") @db.Decimal(10, 4)
+  currentPriceSol     Decimal?  @map("current_price_sol") @db.Decimal(10, 4)
+  hasCharger          Boolean   @default(false) @map("has_charger")
+  chargerLevel        Int       @default(0) @map("charger_level")
+  stationCount        Int       @default(0) @map("station_count")
+  isPremium           Boolean   @default(false) @map("is_premium")
+  totalVirtualCharges Int       @default(0) @map("total_virtual_charges")
+  totalRealCharges    Int       @default(0) @map("total_real_charges")
+  totalEarningsSol    Decimal   @default(0) @map("total_earnings_sol") @db.Decimal(10, 4)
+  lastChargeAt        DateTime? @map("last_charge_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  chargingSessions    VirtualChargingSession[]
+  marketplaceListing  PlotMarketplaceListing?
+  territoryMembership TerritoryHex[]
+
+  @@index([h3Index])
+  @@index([ownerWallet])
+  @@index([centerLat, centerLng])
+  @@map("virtual_plots")
+}
+
+// Map real charging stations to hexagons
+model StationHexMapping {
+  id          Int      @id @default(autoincrement())
+  stationCode String   @unique @map("station_code")
+  stationName String   @map("station_name")
+  h3Index     String   @map("h3_index")
+  lat         Decimal  @db.Decimal(10, 7)
+  lng         Decimal  @db.Decimal(10, 7)
+  city        String?
+  country     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([h3Index])
+  @@index([stationCode])
+  @@map("station_hex_mapping")
+}
+
+// Virtual charging sessions (in-game charges)
+model VirtualChargingSession {
+  id               Int      @id @default(autoincrement())
+  plotId           Int      @map("plot_id")
+  h3Index          String   @map("h3_index")
+  chargerWallet    String   @map("charger_wallet")
+  energyKwh        Decimal  @map("energy_kwh") @db.Decimal(10, 2)
+  feePaidSol       Decimal  @map("fee_paid_sol") @db.Decimal(10, 4)
+  ownerEarningsSol Decimal  @map("owner_earnings_sol") @db.Decimal(10, 4)
+  isRealCharge     Boolean  @default(false) @map("is_real_charge")
+  realSessionId    String?  @map("real_session_id")
+  chargedAt        DateTime @default(now()) @map("charged_at")
+
+  plot             VirtualLandPlot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@index([plotId])
+  @@index([chargerWallet])
+  @@index([chargedAt])
+  @@map("virtual_charging_sessions")
+}
+
+// Plot marketplace listings
+model PlotMarketplaceListing {
+  id            Int       @id @default(autoincrement())
+  plotId        Int       @unique @map("plot_id")
+  h3Index       String    @map("h3_index")
+  sellerWallet  String    @map("seller_wallet")
+  askingPriceSol Decimal  @map("asking_price_sol") @db.Decimal(10, 4)
+  listedAt      DateTime  @default(now()) @map("listed_at")
+  expiresAt     DateTime? @map("expires_at")
+  isActive      Boolean   @default(true) @map("is_active")
+  soldAt        DateTime? @map("sold_at")
+  buyerWallet   String?   @map("buyer_wallet")
+
+  plot          VirtualLandPlot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, askingPriceSol])
+  @@index([sellerWallet])
+  @@map("plot_marketplace")
+}
+
+// Territories (groups of adjacent hexes)
+model Territory {
+  id               Int      @id @default(autoincrement())
+  ownerWallet      String   @map("owner_wallet")
+  name             String?
+  hexCount         Int      @default(0) @map("hex_count")
+  centerH3Index    String?  @map("center_h3_index")
+  bonusMultiplier  Decimal  @default(1.0) @map("bonus_multiplier") @db.Decimal(4, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  hexes            TerritoryHex[]
+
+  @@index([ownerWallet])
+  @@map("territories")
+}
+
+// Territory membership (which hexes belong to which territory)
+model TerritoryHex {
+  id          Int      @id @default(autoincrement())
+  territoryId Int      @map("territory_id")
+  h3Index     String   @map("h3_index")
+  plotId      Int      @map("plot_id")
+  addedAt     DateTime @default(now()) @map("added_at")
+
+  territory   Territory       @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+  plot        VirtualLandPlot @relation(fields: [plotId], references: [id], onDelete: Cascade)
+
+  @@unique([territoryId, h3Index])
+  @@index([territoryId])
+  @@index([h3Index])
+  @@map("territory_hexes")
+}
+
+// Leaderboards (cached for performance)
+model PlotLeaderboard {
+  id               Int      @id @default(autoincrement())
+  walletAddress    String   @unique @map("wallet_address")
+  totalPlots       Int      @default(0) @map("total_plots")
+  totalEarningsSol Decimal  @default(0) @map("total_earnings_sol") @db.Decimal(10, 4)
+  totalCharges     Int      @default(0) @map("total_charges")
+  territoryCount   Int      @default(0) @map("territory_count")
+  rank             Int?
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([rank])
+  @@index([totalEarningsSol(sort: Desc)])
+  @@map("plot_leaderboards")
 }
