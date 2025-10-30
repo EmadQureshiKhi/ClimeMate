@@ -35,7 +35,7 @@ const SuccessNotification: React.FC<SuccessNotificationProps> = ({
           const newProgress = prev - decrement;
           if (newProgress <= 0) {
             clearInterval(timer);
-            onClose();
+            setTimeout(() => onClose(), 0); // Defer to avoid setState during render
             return 0;
           }
           return newProgress;

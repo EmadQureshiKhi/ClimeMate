@@ -7,10 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/useAuth';
 import { useWallets } from '@privy-io/react-auth/solana';
-import { 
-  Award, 
-  Download, 
-  Share2, 
+import {
+  Award,
+  Download,
+  Share2,
   CheckCircle,
   ArrowLeft,
   Loader2,
@@ -21,6 +21,8 @@ import { format } from 'date-fns';
 import CryptoJS from 'crypto-js';
 import { mintCertificateNFT, logCertificateOnChain, getExplorerUrl, getNFTExplorerUrl, type CertificateMetadata } from '@/lib/solana-nft';
 import { NotificationToast } from './notification-toast';
+import { PrivacyToggle } from '@/components/privacy/privacy-toggle';
+import { ArciumCertificateClient } from '@/lib/arcium-certificates';
 
 interface CertificatePreviewProps {
   calculations: any;
@@ -33,9 +35,10 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
   const [isGenerating, setIsGenerating] = useState(false);
   const [certificate, setCertificate] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [isPrivateMode, setIsPrivateMode] = useState(false); // Privacy toggle state
   const { userId, walletAddress } = useAuth();
   const { wallets } = useWallets();
-  
+
   // Notification state
   const [notification, setNotification] = useState<{
     isVisible: boolean;
@@ -57,10 +60,10 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       message,
     });
   };
-  
+
   // Check if we have a valid emission data ID
   const hasValidEmissionDataId = emissionDataId && emissionDataId !== 'temp-emission-id' && emissionDataId.length > 10;
-  
+
 
   const generateCertificate = async () => {
     // Validation checks with user-friendly messages
@@ -87,7 +90,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       const certificateId = `GHG-${Date.now()}`;
       const title = `Emissions Certificate - ${format(new Date(), 'MMM yyyy')}`;
       const breakdown = calculations.breakdown || calculations.categoryBreakdown;
-      
+
       // Generate data hash
       const hashData = {
         totalEmissions: calculations.totalEmissions,
@@ -154,6 +157,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
           nftAddress: null,
           metadataUri: null,
           logTransactionSignature: null,
+          isPrivate: isPrivateMode, // Privacy mode flag
         }),
       });
 
@@ -253,11 +257,11 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
       onGenerate(result);
     } catch (error: any) {
       console.error('❌ Failed to create certificate:', error);
-      
+
       // User-friendly error messages
       let title = 'Certificate Generation Failed';
       let message = 'Failed to create certificate';
-      
+
       if (error.message?.includes('User rejected')) {
         title = 'Transaction Cancelled';
         message = 'You rejected the transaction in your wallet.';
@@ -277,7 +281,7 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
         title = 'Error';
         message = `${error.message || 'Unknown error'}\n\nPlease try again or contact support if the issue persists.`;
       }
-      
+
       showNotification('error', title, message);
     } finally {
       setIsGenerating(false);
@@ -373,6 +377,16 @@ export function CertificatePreview({ calculations, emissionDataId, onGenerate, o
             </div>
 
           </div>
+
+          {/* Privacy Toggle */}
+          {!certificate && (
+            <div className="mt-6">
+              <PrivacyToggle
+                enabled={isPrivateMode}
+                onToggle={setIsPrivateMode}
+              />
+            </div>
+          )}
 
           {/* Generation Button */}
           {!certificate && (

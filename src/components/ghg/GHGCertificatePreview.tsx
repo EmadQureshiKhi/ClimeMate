@@ -21,6 +21,8 @@ import { QuestionnaireData, EmissionEntry } from '@/types/ghg';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth/solana';
 import { logCertificateOnChain } from '@/lib/solana-nft';
+import { PrivacyToggle } from '@/components/privacy/privacy-toggle';
+import { ArciumCertificateClient } from '@/lib/arcium-certificates';
 
 interface GHGCertificatePreviewProps {
   questionnaire: QuestionnaireData;
@@ -52,6 +54,7 @@ export function GHGCertificatePreview({
   const [isGenerating, setIsGenerating] = useState(false);
   const [certificate, setCertificate] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [isPrivateMode, setIsPrivateMode] = useState(false); // NEW: Privacy toggle state
   const { user, authenticated } = usePrivy();
   const { wallets } = useWallets();
   const walletAddress = wallets[0]?.address;
@@ -97,7 +100,47 @@ export function GHGCertificatePreview({
 
       const dataHash = CryptoJS.SHA256(JSON.stringify(hashData)).toString();
 
-      // 2. Pre-save certificate to database (so metadata endpoint works immediately)
+      // 2. Handle privacy mode encryption (if enabled)
+      let encryptedDataId = null;
+      let arciumSignature = null;
+      let arciumDataHash = null;
+
+      if (isPrivateMode) {
+        console.log('🔒 Private mode enabled - encrypting emissions data...');
+        try {
+          const arciumClient = new ArciumCertificateClient();
+          // Store full breakdown data for decryption later
+          const emissionsData = {
+            scope1: calculations.breakdown.scope1 || 0,
+            scope2: calculations.breakdown.scope2 || 0,
+            scope3: calculations.breakdown.scope3 || 0,
+            total: totalEmissions,
+            categoryBreakdown: calculations.categoryBreakdown, // Store detailed breakdown
+            timestamp: Date.now(),
+          };
+
+          const encryptResult = await arciumClient.storePrivateCertificate(
+            emissionsData,
+            walletAddress
+          );
+
+          if (encryptResult.success) {
+            encryptedDataId = encryptResult.certificateId;
+            arciumSignature = encryptResult.signature;
+            arciumDataHash = encryptResult.dataHash;
+            console.log('✅ Emissions data encrypted:', encryptedDataId);
+          } else {
+            throw new Error(encryptResult.error || 'Failed to encrypt data');
+          }
+        } catch (error: any) {
+          console.error('❌ Encryption failed:', error);
+          alert(`Failed to encrypt data: ${error.message}`);
+          setIsGenerating(false);
+          return;
+        }
+      }
+
+      // 3. Pre-save certificate to database (so metadata endpoint works immediately)
       console.log('💾 Pre-saving certificate to database...');
       const emissionDataId = `emission-${Date.now()}`;
       
@@ -122,8 +165,9 @@ export function GHGCertificatePreview({
           certificateId,
           title,
           totalEmissions,
-          breakdown: calculations.categoryBreakdown,
-          processedData: enrichedProcessedData,
+          // If private mode, don't send breakdown/processedData
+          breakdown: isPrivateMode ? null : calculations.categoryBreakdown,
+          processedData: isPrivateMode ? null : enrichedProcessedData,
           summary: {
             ...calculations.summary,
             questionnaire: questionnaire, // Add questionnaire to summary
@@ -133,6 +177,12 @@ export function GHGCertificatePreview({
           nftAddress: null,
           metadataUri: null,
           logTransactionSignature: null,
+          // NEW: Privacy fields
+          isPrivate: isPrivateMode,
+          encryptedDataId,
+          arciumSignature,
+          arciumDataHash,
+          authorizedViewers: [], // Can be extended later
         }),
       });
 
@@ -143,18 +193,21 @@ export function GHGCertificatePreview({
       const { certificate: preSavedCertificate } = await preSaveResponse.json();
       console.log('✅ Certificate pre-saved:', preSavedCertificate.id);
 
-      // 3. Mint compressed NFT
-      console.log('🎨 Minting compressed NFT...');
+      // 4. Mint compressed NFT
+      console.log(isPrivateMode ? '🔒 Minting private NFT...' : '🎨 Minting compressed NFT...');
       const nftResponse = await fetch('/api/nft/mint-compressed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           certificateData: {
             certificateId,
-            title,
+            title: isPrivateMode ? `Private ${title}` : title,
             totalEmissions,
-            breakdown: calculations.categoryBreakdown,
+            // If private mode, don't include breakdown in NFT metadata
+            breakdown: isPrivateMode ? null : calculations.categoryBreakdown,
             issueDate: new Date().toISOString(),
+            isPrivate: isPrivateMode,
+            encryptedDataId: isPrivateMode ? encryptedDataId : null,
           },
           userWallet: walletAddress,
           userId: user?.id,
@@ -180,23 +233,17 @@ export function GHGCertificatePreview({
         if (!wallet) {
           console.warn('⚠️ No wallet found, skipping memo log');
         } else {
+          // Create minimal log data for on-chain (to avoid compute unit limits)
+          // Full data is already in the database and NFT metadata
           const logResult = await logCertificateOnChain(
             walletAddress,
             {
-              type: 'CERTIFICATE_AUDIT_LOG',
-              version: '1.0',
-              application: 'ClimeMate GHG Calculator',
-              module: 'GHG Certificate Generation',
-              action: 'Certificate Created',
-              details: {
-                certificateId,
-                dataHash,
-                totalEmissions,
-                breakdown: calculations.categoryBreakdown,
-                organizationName: calculations.organizationName,
-              },
-              timestamp: new Date().toISOString(),
-              user: walletAddress,
+              type: isPrivateMode ? 'PRIVATE_CERT' : 'GHG_CERT',
+              certId: certificateId,
+              hash: dataHash,
+              total: totalEmissions,
+              private: isPrivateMode ? 1 : 0,
+              ts: Date.now(),
             },
             async (txData: any) => {
               const result = await wallet.signAndSendTransaction(txData);
@@ -408,9 +455,22 @@ Generated: ${new Date().toLocaleString()}
 
           </div>
 
+          {/* Privacy Toggle */}
+          {!certificate && (
+            <div className="mt-6">
+              <PrivacyToggle
+                enabled={isPrivateMode}
+                onToggle={setIsPrivateMode}
+                label="Private Mode"
+                description="Encrypt emissions breakdown using Arcium MPC"
+                showDetails={true}
+              />
+            </div>
+          )}
+
           {/* Generation Button */}
           {!certificate && (
-            <div className="text-center">
+            <div className="text-center mt-6">
               <Button
                 size="lg"
                 onClick={generateCertificate}
@@ -420,17 +480,20 @@ Generated: ${new Date().toLocaleString()}
                 {isGenerating ? (
                   <>
                     <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    Generating Certificate...
+                    {isPrivateMode ? 'Encrypting & Generating...' : 'Generating Certificate...'}
                   </>
                 ) : (
                   <>
                     <Award className="h-5 w-5 mr-2" />
-                    Generate Certificate
+                    {isPrivateMode ? 'Generate Private Certificate' : 'Generate Certificate'}
                   </>
                 )}
               </Button>
               <p className="text-sm text-muted-foreground mt-2">
-                This will create a verified certificate. Blockchain verification coming soon!
+                {isPrivateMode 
+                  ? '🔒 Your emissions breakdown will be encrypted. Total emissions remain public for verification.'
+                  : 'This will create a verified certificate with blockchain verification.'
+                }
               </p>
             </div>
           )}

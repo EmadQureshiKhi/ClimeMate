@@ -235,11 +235,14 @@ Generated: ${new Date().toLocaleString()}
                 <div className="space-y-2">
                   <span className="text-sm text-muted-foreground">Categories</span>
                   <div className="flex flex-wrap gap-1">
-                    {Object.keys(certificate.breakdown).map((category) => (
+                    {certificate.breakdown && Object.keys(certificate.breakdown).map((category) => (
                       <Badge key={category} variant="secondary" className="text-xs">
                         {category}
                       </Badge>
                     ))}
+                    {!certificate.breakdown && (
+                      <span className="text-xs text-muted-foreground">No breakdown available</span>
+                    )}
                   </div>
                 </div>
 

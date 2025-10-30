@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Award, 
-  Download, 
-  Share2, 
+import {
+  Award,
+  Download,
+  Share2,
   ExternalLink,
   Calendar,
   CheckCircle,
@@ -39,6 +39,8 @@ import Link from 'next/link';
 import { getExplorerUrl } from '@/lib/solana-nft';
 import { EmissionEntry } from '@/types/ghg';
 import React from 'react';
+import { PrivateCertificateViewer } from './private-certificate-viewer';
+import { usePrivy } from '@privy-io/react-auth';
 
 interface CertificateDetailProps {
   certificateId: string;
@@ -65,7 +67,8 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
   const { retireCredits, isRetiring, calculateRetirementStatus } = useRetirement();
   const escrow = useEscrow();
   const { walletAddress } = useAuth();
-  
+  const { user } = usePrivy(); // Moved here to avoid conditional hook call
+
   // Fetch certificate data
   React.useEffect(() => {
     const fetchCertificate = async () => {
@@ -82,34 +85,34 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
         setIsLoading(false);
       }
     };
-    
+
     fetchCertificate();
   }, [certificateId]);
 
   // Fetch retirement history from audit logs
   const fetchRetirementHistory = async () => {
     if (!certificate || !walletAddress) return;
-    
+
     try {
       setIsLoadingHistory(true);
-      
+
       // Fetch logs for this wallet address
       const response = await fetch(`/api/audit-logs?walletAddress=${walletAddress}`);
       if (response.ok) {
         const data = await response.json();
         // Filter for retirement actions for this certificate
-        const retirements = data.logs?.filter((log: any) => 
-          log.action === 'RETIRE_CREDITS' && 
+        const retirements = data.logs?.filter((log: any) =>
+          log.action === 'RETIRE_CREDITS' &&
           log.details?.certificateId === certificateId
         ) || [];
-        
+
         console.log('📊 Retirement history:', {
           walletAddress,
           totalLogs: data.logs?.length,
           retirements: retirements.length,
           certificateId,
         });
-        
+
         setRetirementHistory(retirements);
       }
     } catch (error) {
@@ -125,13 +128,13 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
       fetchRetirementHistory();
     }
   }, [showRetirementHistory, certificate]);
-  
+
   const retirementTransactions: any[] = [];
   const isLoadingRetirements = false;
 
   const handleRetireCredits = async () => {
     const amount = parseFloat(retirementAmount);
-    
+
     if (!amount || amount <= 0) {
       toast({
         title: "Invalid Amount",
@@ -174,10 +177,10 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
           const data = await response.json();
           setCertificate(data.certificate);
         }
-        
+
         setShowRetirementForm(false);
         setRetirementAmount('');
-        
+
         // Refresh history if it's open
         if (showRetirementHistory) {
           fetchRetirementHistory();
@@ -214,7 +217,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
         description: (
           <div className="space-y-1">
             <p>Your offset certificate NFT has been minted! {((certificate.offsetAmount / certificate.totalEmissions) * 100).toFixed(1)}% offset recorded.</p>
-            <a 
+            <a
               href={`https://solscan.io/tx/${data.signature}?cluster=devnet`}
               target="_blank"
               rel="noopener noreferrer"
@@ -304,7 +307,35 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
         </div>
       </div>
 
-      {/* Certificate Display */}
+      {/* Private Certificate Viewer (if private) */}
+      {(() => {
+        console.log('🔍 Certificate privacy check:', {
+          isPrivate: certificate.isPrivate,
+          encryptedDataId: certificate.encryptedDataId,
+          userId: certificate.userId,
+          currentUserId: user?.id,
+        });
+        return certificate.isPrivate;
+      })() && (
+          <PrivateCertificateViewer
+            certificate={{
+              id: certificate.id,
+              certificateId: certificate.certificate_id,
+              title: certificate.title,
+              totalEmissions: certificate.totalEmissions,
+              organizationName: certificate.title.split(' - ')[0],
+              isPrivate: certificate.isPrivate,
+              encryptedDataId: certificate.encryptedDataId,
+              arciumSignature: certificate.arciumSignature,
+              arciumDataHash: certificate.arciumDataHash,
+              userId: certificate.userId,
+              createdAt: certificate.issueDate,
+            }}
+            currentUserId={user?.id}
+          />
+        )}
+
+      {/* Certificate Display (public mode or additional info) */}
       <Card className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950"></div>
         <CardContent className="relative p-8">
@@ -349,11 +380,14 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Categories</label>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {Object.keys(certificate.breakdown).map((category) => (
+                    {certificate.breakdown && Object.keys(certificate.breakdown).map((category) => (
                       <Badge key={category} variant="secondary">
                         {category}
                       </Badge>
                     ))}
+                    {!certificate.breakdown && (
+                      <span className="text-sm text-muted-foreground">No breakdown available</span>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -457,7 +491,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               certificate.totalEmissions,
               offsetAmount
             );
-            
+
             return (
               <div className="bg-white dark:bg-gray-900 p-6 rounded-lg space-y-4">
                 <div className="flex items-center justify-between">
@@ -465,18 +499,18 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                     <p className="text-sm text-muted-foreground">Offset Progress</p>
                     <p className="text-2xl font-bold text-green-600">{percentage}%</p>
                   </div>
-                  <Badge 
+                  <Badge
                     className={
-                      status === 'fully_offset' 
-                        ? 'bg-green-600' 
+                      status === 'fully_offset'
+                        ? 'bg-green-600'
                         : status === 'partially_offset'
-                        ? 'bg-yellow-600'
-                        : 'bg-gray-600'
+                          ? 'bg-yellow-600'
+                          : 'bg-gray-600'
                     }
                   >
-                    {status === 'fully_offset' ? '✓ Fully Offset' : 
-                     status === 'partially_offset' ? 'Partially Offset' : 
-                     'Not Offset'}
+                    {status === 'fully_offset' ? '✓ Fully Offset' :
+                      status === 'partially_offset' ? 'Partially Offset' :
+                        'Not Offset'}
                   </Badge>
                 </div>
                 <Progress value={percentage} className="h-3" />
@@ -512,11 +546,11 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                     )}
                   </p>
                 </div>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => escrow.refresh()} 
+                  onClick={() => escrow.refresh()}
                   disabled={escrow.loading}
                   title="Refresh balance"
                 >
@@ -550,7 +584,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   <ChevronDown className="h-4 w-4" />
                 )}
               </button>
-              
+
               {showRetirementHistory && (
                 <div className="border-t p-4 space-y-3">
                   {isLoadingHistory ? (
@@ -604,7 +638,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
           {!showRetirementForm ? (
             <div className="space-y-3">
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={() => setShowRetirementForm(true)}
                   className="flex-1 bg-green-600 hover:bg-green-700"
                   disabled={certificate.offsetAmount >= certificate.totalEmissions}
@@ -612,7 +646,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   <Flame className="h-4 w-4 mr-2" />
                   Retire CO₂e Credits
                 </Button>
-                
+
                 <Button
                   onClick={handleMintCertificate}
                   disabled={certificate.offsetAmount === 0 || isMintingCertificate}
@@ -633,13 +667,13 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   )}
                 </Button>
               </div>
-              
+
               {certificate.offsetAmount >= certificate.totalEmissions && (
                 <p className="text-sm text-green-600 font-medium text-center">
                   ✓ Certificate fully offset!
                 </p>
               )}
-              
+
               {certificate.offsetAmount === 0 && (
                 <p className="text-xs text-muted-foreground text-center">
                   Mint certificate button will be enabled after you offset any amount
@@ -676,7 +710,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
               </div>
 
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={handleRetireCredits}
                   disabled={!retirementAmount || parseFloat(retirementAmount) <= 0 || isRetiring}
                   className="flex-1 bg-green-600 hover:bg-green-700"
@@ -693,8 +727,8 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                     </>
                   )}
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => {
                     setShowRetirementForm(false);
                     setRetirementAmount('');
@@ -815,7 +849,7 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                   <div>
                     <span className="text-green-700 dark:text-green-300">Latest Retirement:</span>
                     <p className="font-bold text-green-800 dark:text-green-200">
-                      {retirementTransactions.length > 0 
+                      {retirementTransactions.length > 0
                         ? format(new Date(retirementTransactions[0].created_at), 'MMM dd, yyyy')
                         : 'None'
                       }
@@ -838,12 +872,17 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {Object.entries(certificate.breakdown).map(([category, emissions]) => (
+            {certificate.breakdown && Object.entries(certificate.breakdown).map(([category, emissions]) => (
               <div key={category} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <span className="font-medium">{category}</span>
                 <span className="font-bold">{Number(emissions).toFixed(2)} kg CO₂e</span>
               </div>
             ))}
+            {!certificate.breakdown && (
+              <div className="text-center py-4 text-muted-foreground">
+                No emissions breakdown available for this certificate
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -868,8 +907,8 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
                       </div>
                       <div>
                         <h4 className="font-semibold text-lg">{entry.fuelType || entry.activity}</h4>
-                        <Badge 
-                          variant={entry.scope === 'Scope 1' ? 'default' : 'default'} 
+                        <Badge
+                          variant={entry.scope === 'Scope 1' ? 'default' : 'default'}
                           className={`text-xs ${entry.scope === 'Scope 1' ? 'bg-blue-600' : 'bg-green-600'}`}
                         >
                           {entry.scope}
@@ -1034,10 +1073,6 @@ export function CertificateDetail({ certificateId }: CertificateDetailProps) {
             <ShoppingCart className="h-4 w-4 mr-2" />
             Buy Carbon Credits
           </Link>
-        </Button>
-        <Button variant="outline" disabled>
-          <ExternalLink className="h-4 w-4 mr-2" />
-          Solana Explorer (Soon)
         </Button>
       </div>
 
