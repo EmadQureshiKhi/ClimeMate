@@ -1,54 +1,52 @@
-# Logs
-*.log
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Dependency directories
-node_modules/
-
-# Build output
-.next/
-dist/
-build/
-target/
-
-# Environment variables
-.env
-.env.local
-
-# Editor directories and files
-.vscode/
-!.vscode/extensions.json 
-.idea/
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.anchor/
-
-# Other common ignored files
-*.local
-node_modules
+# local env files
+.env*.local
 .env
 
-# Hardhat files
-/cache
-/artifacts
+# vercel
+.vercel
 
-# TypeChain files
-/typechain
-/typechain-types
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
-# solidity-coverage files
-/coverage
-/coverage.json
+# Anchor/Solana
+co2e-escrow/target/
+co2e-escrow/.anchor/
+co2e-escrow/test-ledger/
 
-# Hardhat Ignition default folder for deployments against a local node
-ignition/deployments/chain-31337
+# Scripts - keep locally but don't push to GitHub
+co2e-escrow/scripts/
+scripts/setup-*.sh
+scripts/fund-*.ts
+scripts/create-*.sh
+scripts/add-*.ts
+scripts/map-*.ts
 
-/generated/prisma
+# Prisma
+prisma/.env
