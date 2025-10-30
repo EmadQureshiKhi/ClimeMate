@@ -54,7 +54,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId: privyUserId, name, description, industry, size, status } = body;
+    const { 
+      userId: privyUserId, 
+      name, 
+      description, 
+      industry, 
+      size, 
+      status,
+      privacyMode,
+      authorizedAuditors 
+    } = body;
 
     if (!privyUserId || !name || !industry || !size) {
       return NextResponse.json(
@@ -84,6 +93,8 @@ export async function POST(request: NextRequest) {
         industry,
         size,
         status: status || 'active',
+        privacyMode: privacyMode || false,
+        authorizedAuditors: authorizedAuditors || [],
       },
     });
 

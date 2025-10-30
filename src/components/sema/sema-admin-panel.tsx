@@ -71,7 +71,9 @@ export default function SemaAdminPanel({
     description: '',
     industry: '',
     size: 'Medium' as 'Small' | 'Medium' | 'Large' | 'Enterprise',
-    status: 'active' as 'active' | 'inactive'
+    status: 'active' as 'active' | 'inactive',
+    privacyMode: false,
+    authorizedAuditors: [] as string[]
   });
 
   // Log action to Solana blockchain
@@ -288,18 +290,19 @@ export default function SemaAdminPanel({
     if (!clientToDelete) return;
 
     try {
-      await deleteClient(clientToDelete.id);
-      toast({
-        title: "Client Deleted",
-        description: `${clientToDelete.name} has been deleted.`,
-      });
-      
-      // Log to blockchain
+      // Log to blockchain BEFORE deleting (so clientId still exists)
       await logToBlockchain('client_deleted', {
         id: clientToDelete.id,
         name: clientToDelete.name,
         industry: clientToDelete.industry,
         size: clientToDelete.size,
+      });
+      
+      // Now delete the client
+      await deleteClient(clientToDelete.id);
+      toast({
+        title: "Client Deleted",
+        description: `${clientToDelete.name} has been deleted.`,
       });
       
       // Reload clients to refresh the list
@@ -411,6 +414,57 @@ export default function SemaAdminPanel({
                     />
                   </div>
 
+                  {/* Privacy Settings Section */}
+                  <div className="border-t pt-4 mt-4">
+                    <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      Privacy Settings (Global for all SEMA operations)
+                    </h3>
+                    <div className="space-y-3 p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label htmlFor="privacyMode" className="text-sm font-medium">
+                            Enable Privacy Mode
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Encrypt all SEMA data (stakeholders, topics, assessments) for this client
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          id="privacyMode"
+                          checked={formData.privacyMode || false}
+                          onChange={(e) => setFormData(prev => ({ ...prev, privacyMode: e.target.checked }))}
+                          className="h-4 w-4"
+                        />
+                      </div>
+                      
+                      {formData.privacyMode && (
+                        <div className="space-y-2 pt-2 border-t border-purple-200">
+                          <Label htmlFor="auditors" className="text-xs">
+                            Authorized Auditors (Optional)
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Wallet addresses that can decrypt this client's SEMA data (comma-separated)
+                          </p>
+                          <Input
+                            id="auditors"
+                            value={formData.authorizedAuditors?.join(', ') || ''}
+                            onChange={(e) => {
+                              const auditors = e.target.value
+                                .split(',')
+                                .map(a => a.trim())
+                                .filter(a => a.length > 0);
+                              setFormData(prev => ({ ...prev, authorizedAuditors: auditors }));
+                            }}
+                            placeholder="wallet1, wallet2, wallet3..."
+                            className="text-xs"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex gap-2">
                     <Button type="submit" disabled={isLoading}>
                       {isLoading ? 'Saving...' : editingClient ? 'Update Client' : 'Add Client'}
@@ -471,12 +525,22 @@ export default function SemaAdminPanel({
                               {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
                             </Badge>
                           )}
+                          {client.privacyMode && (
+                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950 dark:text-purple-300">
+                              🔒 Privacy Mode
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">{client.description}</p>
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                           <span>Industry: {client.industry}</span>
                           <span>Size: {client.size}</span>
-                          <span>Created: {new Date(client.created_at).toLocaleDateString()}</span>
+                          <span>Created: {new Date(client.createdAt).toLocaleDateString()}</span>
+                          {client.privacyMode && client.authorizedAuditors && client.authorizedAuditors.length > 0 && (
+                            <span className="text-purple-600 dark:text-purple-400">
+                              {client.authorizedAuditors.length} Authorized Auditor{client.authorizedAuditors.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-1">

@@ -2,16 +2,17 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
+import { useWallets } from '@privy-io/react-auth/solana';
 
 // Export SemaModule type for use in other components
-export type SemaModule = 
-  | 'dashboard' 
-  | 'stakeholders' 
-  | 'sample-size' 
-  | 'questionnaire' 
-  | 'internal-assessment' 
-  | 'materiality-matrix' 
-  | 'reporting' 
+export type SemaModule =
+  | 'dashboard'
+  | 'stakeholders'
+  | 'sample-size'
+  | 'questionnaire'
+  | 'internal-assessment'
+  | 'materiality-matrix'
+  | 'reporting'
   | 'admin';
 
 // Demo client that's always available
@@ -33,6 +34,8 @@ export interface SemaClient {
   industry?: string;
   size?: string;
   status: 'active' | 'inactive' | 'demo';
+  privacyMode?: boolean;
+  authorizedAuditors?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -132,7 +135,7 @@ interface SemaContextType {
   addClient: (client: Omit<SemaClient, 'id' | 'created_at' | 'updated_at'>) => Promise<SemaClient>;
   updateClient: (id: string, updates: Partial<SemaClient>) => Promise<void>;
   deleteClient: (id: string) => Promise<void>;
-  
+
   // Data management
   stakeholders: SemaStakeholder[];
   sampleParameters: SemaSampleParameters | null;
@@ -140,12 +143,12 @@ interface SemaContextType {
   internalTopics: SemaInternalTopic[];
   questionnaireResponses: SemaQuestionnaireResponse[];
   reports: SemaReport[];
-  
+
   // Data operations
   refreshData: () => Promise<void>;
   reloadClients: () => Promise<void>;
   isLoading: boolean;
-  
+
   // CRUD operations
   addStakeholder: (data: any) => Promise<void>;
   updateStakeholder: (id: string, updates: any) => Promise<void>;
@@ -157,7 +160,7 @@ interface SemaContextType {
   addInternalTopic: (data: any) => Promise<void>;
   updateInternalTopic: (id: string, updates: any) => Promise<void>;
   deleteInternalTopic: (id: string) => Promise<void>;
-  
+
   // Navigation and form control
   setActiveSemaModule: (module: SemaModule) => void;
   setOpenAdminClientForm: (isOpen: boolean) => void;
@@ -171,12 +174,13 @@ interface SemaProviderProps {
   setOpenAdminClientForm: (isOpen: boolean) => void;
 }
 
-export function SemaProvider({ 
-  children, 
-  setActiveSemaModule, 
-  setOpenAdminClientForm 
+export function SemaProvider({
+  children,
+  setActiveSemaModule,
+  setOpenAdminClientForm
 }: SemaProviderProps) {
   const { user } = usePrivy();
+  const { wallets } = useWallets();
   const [clients, setClients] = useState<SemaClient[]>([]);
   const [activeClient, setActiveClient] = useState<SemaClient | null>(null);
   const [stakeholders, setStakeholders] = useState<SemaStakeholder[]>([]);
@@ -186,7 +190,7 @@ export function SemaProvider({
   const [questionnaireResponses, setQuestionnaireResponses] = useState<SemaQuestionnaireResponse[]>([]);
   const [reports, setReports] = useState<SemaReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Demo data for showcase
   const getDemoData = () => ({
     stakeholders: [
@@ -677,7 +681,7 @@ export function SemaProvider({
     try {
       // Always include demo client
       const allClients = [DEMO_CLIENT];
-      
+
       // Fetch real clients from API if user is authenticated
       if (user?.id) {
         const response = await fetch(`/api/sema/clients?userId=${user.id}`);
@@ -686,7 +690,7 @@ export function SemaProvider({
           allClients.push(...apiClients);
         }
       }
-      
+
       setClients(allClients);
       if (!activeClient) {
         setActiveClient(DEMO_CLIENT);
@@ -713,7 +717,7 @@ export function SemaProvider({
 
   // Expose loadClients for external use
   const reloadClients = loadClients;
-  
+
   const addClient = async (clientData: Omit<SemaClient, 'id' | 'created_at' | 'updated_at'>): Promise<SemaClient> => {
     if (!user?.id) {
       throw new Error('User not authenticated');
@@ -735,7 +739,7 @@ export function SemaProvider({
     }
 
     const { client: newClient } = await response.json();
-    
+
     // Convert API response to match SemaClient type
     const formattedClient: SemaClient = {
       id: newClient.id,
@@ -744,16 +748,18 @@ export function SemaProvider({
       industry: newClient.industry,
       size: newClient.size,
       status: newClient.status,
+      privacyMode: newClient.privacyMode,
+      authorizedAuditors: newClient.authorizedAuditors,
       created_at: newClient.createdAt,
       updated_at: newClient.updatedAt,
     };
-    
+
     // Reload all clients to ensure consistency
     await loadClients();
-    
+
     // Set the new client as active
     setActiveClient(formattedClient);
-    
+
     return formattedClient;
   };
 
@@ -776,7 +782,7 @@ export function SemaProvider({
     }
 
     const { client: updatedClient } = await response.json();
-    
+
     // Convert API response
     const formattedClient: SemaClient = {
       id: updatedClient.id,
@@ -788,7 +794,7 @@ export function SemaProvider({
       created_at: updatedClient.createdAt,
       updated_at: updatedClient.updatedAt,
     };
-    
+
     setClients(prev => prev.map(c => c.id === id ? formattedClient : c));
     if (activeClient?.id === id) {
       setActiveClient(formattedClient);
@@ -829,7 +835,7 @@ export function SemaProvider({
         ...stakeholderData,
         client_id: activeClient.id,
         total_score: (stakeholderData.dependency_economic + stakeholderData.dependency_social + stakeholderData.dependency_environmental +
-                     stakeholderData.influence_economic + stakeholderData.influence_social + stakeholderData.influence_environmental),
+          stakeholderData.influence_economic + stakeholderData.influence_social + stakeholderData.influence_environmental),
         normalized_score: 0.8,
         influence_category: 'High' as const,
         is_priority: true,
@@ -840,12 +846,16 @@ export function SemaProvider({
       return;
     }
 
+    // Get wallet address for blockchain logging
+    const walletAddress = wallets && wallets.length > 0 ? wallets[0].address : undefined;
+
     // For real clients, call the API
     const response = await fetch('/api/sema/stakeholders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clientId: activeClient.id,
+        walletAddress,
         ...stakeholderData,
       }),
     });
@@ -919,11 +929,11 @@ export function SemaProvider({
         id: sampleParameters?.id || `params-${Date.now()}`,
         client_id: activeClient.id,
         ...parameters,
-        z_score: parameters.confidence_level === 0.90 ? 1.645 : 
-                 parameters.confidence_level === 0.95 ? 1.96 : 2.576,
+        z_score: parameters.confidence_level === 0.90 ? 1.645 :
+          parameters.confidence_level === 0.95 ? 1.96 : 2.576,
         base_sample_size: Math.ceil(
-          Math.pow(parameters.confidence_level === 0.90 ? 1.645 : 
-                   parameters.confidence_level === 0.95 ? 1.96 : 2.576, 2) *
+          Math.pow(parameters.confidence_level === 0.90 ? 1.645 :
+            parameters.confidence_level === 0.95 ? 1.96 : 2.576, 2) *
           parameters.population_proportion * (1 - parameters.population_proportion) /
           Math.pow(parameters.margin_error, 2)
         ),
@@ -1148,7 +1158,7 @@ export function SemaProvider({
     if (!activeClient) return;
 
     setIsLoading(true);
-    
+
     try {
       // Fetch stakeholders
       const stakeholdersResponse = await fetch(`/api/sema/stakeholders?clientId=${activeClient.id}`);
@@ -1270,7 +1280,7 @@ export function SemaProvider({
 
       // Clear questionnaire responses for now (will be loaded per topic)
       setQuestionnaireResponses([]);
-      
+
     } catch (error) {
       console.error('Error refreshing data:', error);
       // Clear data on error

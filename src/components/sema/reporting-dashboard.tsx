@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useSema } from './sema-context';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -18,13 +20,16 @@ import {
   Target,
   Database,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { useWallets } from '@privy-io/react-auth/solana';
 import { logCertificateOnChain } from '@/lib/solana-nft';
 import CryptoJS from 'crypto-js';
 import { BlockchainVerificationCard } from './blockchain-verification-card';
+import { PrivacyToggle } from '@/components/privacy/privacy-toggle';
+import { ArciumSEMAClient } from '@/lib/arcium-sema';
 
 export default function ReportingDashboard() {
   const { 
@@ -48,6 +53,13 @@ export default function ReportingDashboard() {
     error?: string;
   }>>([]);
   const [isLoggingToBlockchain, setIsLoggingToBlockchain] = useState(false);
+  
+  // Privacy settings from client (global setting)
+  const isPrivateMode = activeClient?.privacyMode || false;
+  const authorizedAuditors = activeClient?.authorizedAuditors || [];
+  
+  // Local state for adding auditors
+  const [auditorInput, setAuditorInput] = useState('');
 
   if (!activeClient) {
     return (
@@ -224,25 +236,86 @@ export default function ReportingDashboard() {
   const priorityStakeholders = stakeholders.filter(s => s.is_priority).length;
 
   const handleFinalizeReport = async () => {
-    if (!activeClient) return;
+    if (!activeClient || !wallets || wallets.length === 0) return;
 
     try {
+      let encryptedReportId = null;
+      let arciumSignature = null;
+      let arciumDataHash = null;
+
+      // Handle privacy mode encryption
+      if (isPrivateMode) {
+        toast({
+          title: "Encrypting Report",
+          description: "Encrypting SEMA report data with Arcium...",
+        });
+
+        const arciumClient = new ArciumSEMAClient();
+        const wallet = wallets[0];
+
+        // Prepare report data for encryption
+        const reportData = {
+          stakeholders: stakeholders.map(s => ({
+            depEconomic: s.dependency_economic,
+            depSocial: s.dependency_social,
+            depEnvironmental: s.dependency_environmental,
+            infEconomic: s.influence_economic,
+            infSocial: s.influence_social,
+            infEnvironmental: s.influence_environmental,
+          })),
+          topics: materialTopics.map(t => ({
+            externalScore: t.average_score,
+            internalScore: internalTopics.find(it => it.topic_name === t.topic_name)?.significance || 0,
+            isMaterial: t.is_material,
+          })),
+          stakeholderCount: stakeholders.length,
+          materialTopicCount: finalMaterialTopics.length,
+          complianceScore: overallProgress,
+        };
+
+        const encryptResult = await arciumClient.storePrivateReport(
+          activeClient.id,
+          reportData,
+          wallet.address
+        );
+
+        if (encryptResult.success) {
+          encryptedReportId = encryptResult.reportId;
+          arciumSignature = encryptResult.signature;
+          arciumDataHash = encryptResult.dataHash;
+        } else {
+          throw new Error('Failed to encrypt report');
+        }
+      }
+
       toast({
-        title: "Report Finalized",
-        description: "SEMA report has been finalized and logged to blockchain!",
+        title: isPrivateMode ? "Private Report Finalized" : "Report Finalized",
+        description: isPrivateMode 
+          ? "SEMA report has been encrypted and logged to blockchain!"
+          : "SEMA report has been finalized and logged to blockchain!",
       });
 
-      // Log to blockchain
-      await logToBlockchain('report_finalized', {
-        reportTitle: `${activeClient.name} - SEMA Report ${new Date().getFullYear()}`,
-        materialTopicsCount: finalMaterialTopics.length,
-        stakeholdersCount: stakeholders.length,
-        priorityStakeholdersCount: priorityStakeholders,
-        externalTopicsCount: externalMaterialTopics.length,
-        internalTopicsCount: internalMaterialTopics.length,
-        overallProgress: overallProgress,
-        completionDate: new Date().toISOString(),
-      });
+      // Log to blockchain (with privacy flag)
+      await logToBlockchain(
+        isPrivateMode ? 'private_report_finalized' : 'report_finalized',
+        {
+          reportTitle: `${activeClient.name} - SEMA Report ${new Date().getFullYear()}`,
+          materialTopicsCount: finalMaterialTopics.length,
+          stakeholdersCount: stakeholders.length,
+          priorityStakeholdersCount: priorityStakeholders,
+          externalTopicsCount: externalMaterialTopics.length,
+          internalTopicsCount: internalMaterialTopics.length,
+          overallProgress: overallProgress,
+          completionDate: new Date().toISOString(),
+          ...(isPrivateMode && {
+            isPrivate: true,
+            encryptedReportId,
+            arciumSignature,
+            arciumDataHash,
+            authorizedAuditors: authorizedAuditors.length,
+          }),
+        }
+      );
     } catch (error: any) {
       toast({
         title: "Error",
@@ -437,6 +510,28 @@ export default function ReportingDashboard() {
             </div>
           </div>
           
+          {/* Privacy Notice (if enabled globally) */}
+          {isPrivateMode && (
+            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200">
+              <div className="flex items-start gap-2">
+                <Settings className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                    Privacy Mode Enabled
+                  </p>
+                  <p className="text-xs text-purple-700 dark:text-purple-300">
+                    All SEMA data for this client will be encrypted automatically. This setting is configured in the Admin Panel.
+                  </p>
+                  {authorizedAuditors.length > 0 && (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-2">
+                      Authorized Auditors: {authorizedAuditors.length} wallet(s)
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="text-center">
             <Button 
               onClick={handleFinalizeReport}
@@ -445,11 +540,16 @@ export default function ReportingDashboard() {
               className="bg-purple-600 hover:bg-purple-700"
             >
               <CheckCircle className="h-5 w-5 mr-2" />
-              Finalize Report
+              {isPrivateMode ? 'Finalize Private Report' : 'Finalize Report'}
             </Button>
             {overallProgress < 70 && (
               <p className="text-sm text-muted-foreground mt-2">
                 Complete at least 70% of the SEMA process to finalize the report
+              </p>
+            )}
+            {isPrivateMode && overallProgress >= 70 && (
+              <p className="text-sm text-purple-600 mt-2">
+                🔒 Your SEMA report will be encrypted. Summary data remains public for verification.
               </p>
             )}
           </div>
