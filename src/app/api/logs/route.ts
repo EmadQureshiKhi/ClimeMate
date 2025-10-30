@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         source: 'general'
       }))
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-     .slice(0, 100); // Limit to 100 total
+      .slice(0, 100); // Limit to 100 total
 
     console.log('📊 Total logs returned:', allLogs.length);
 

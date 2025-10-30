@@ -9,6 +9,9 @@ interface BlockchainLogParams {
   data: any;
   setBlockchainLogs: (updater: (prev: any[]) => any[]) => void;
   setIsLoggingToBlockchain: (loading: boolean) => void;
+  isPrivate?: boolean; // NEW: Privacy mode flag
+  encryptedDataId?: string; // NEW: Arcium reference
+  arciumSignature?: string; // NEW: Arcium transaction
 }
 
 export async function logToBlockchainWithDB({
@@ -19,6 +22,9 @@ export async function logToBlockchainWithDB({
   data,
   setBlockchainLogs,
   setIsLoggingToBlockchain,
+  isPrivate = false, // NEW: Default to public mode
+  encryptedDataId,
+  arciumSignature,
 }: BlockchainLogParams): Promise<void> {
   if (!wallets || wallets.length === 0 || !activeClient) {
     console.warn('No wallet connected or no active client, skipping blockchain log');
@@ -36,7 +42,33 @@ export async function logToBlockchainWithDB({
     const wallet = wallets[0];
     
     // Create detailed audit log data
-    const logData = {
+    // If private mode, mask sensitive data
+    const logData = isPrivate ? {
+      type: 'PRIVATE_SEMA_AUDIT_LOG',
+      version: '1.0',
+      application: 'ClimeMate SEMA Tools',
+      module,
+      action: action.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      isPrivate: true,
+      encryptedDataId,
+      arciumSignature,
+      details: {
+        clientId: activeClient.id,
+        clientName: activeClient.name,
+        // Only include non-sensitive summary data
+        ...Object.keys(data).reduce((acc, key) => {
+          // Include only summary fields, not detailed data
+          if (['totalStakeholders', 'totalMaterialTopics', 'complianceScore'].includes(key)) {
+            acc[key] = data[key];
+          } else {
+            acc[key] = 'ENCRYPTED';
+          }
+          return acc;
+        }, {} as any),
+      },
+      timestamp: new Date().toISOString(),
+      user: wallet.address,
+    } : {
       type: 'SEMA_AUDIT_LOG',
       version: '1.0',
       application: 'ClimeMate SEMA Tools',
@@ -146,4 +178,83 @@ export async function logToBlockchainWithDB({
   } finally {
     setIsLoggingToBlockchain(false);
   }
+}
+
+
+/**
+ * Log certificate creation to blockchain (handles both public and private modes)
+ */
+export async function logCertificateToBlockchain(
+  walletAddress: string,
+  certificateData: {
+    id: string;
+    organizationName: string;
+    totalEmissions: number;
+    scope1Emissions?: number | null;
+    scope2Emissions?: number | null;
+    scope3Emissions?: number | null;
+    isPrivate?: boolean;
+    encryptedDataId?: string;
+    arciumSignature?: string;
+  },
+  signAndSendTransaction: (tx: any) => Promise<string>
+): Promise<{ success: boolean; signature?: string; error?: string }> {
+  try {
+    // Determine if private mode
+    const isPrivate = certificateData.isPrivate || false;
+    
+    // Create log data based on mode
+    const logData = isPrivate ? {
+      type: 'PRIVATE_CERTIFICATE_CREATED',
+      version: '1.0',
+      application: 'ClimeMate',
+      module: 'Certificate Generation',
+      certificateId: certificateData.id,
+      organizationName: certificateData.organizationName,
+      totalEmissions: certificateData.totalEmissions, // ✅ Public (for verification)
+      isPrivate: true,
+      encryptedDataId: certificateData.encryptedDataId,
+      arciumSignature: certificateData.arciumSignature,
+      dataHash: CryptoJS.SHA256(JSON.stringify({
+        scope1: certificateData.scope1Emissions,
+        scope2: certificateData.scope2Emissions,
+        scope3: certificateData.scope3Emissions,
+      })).toString(),
+      scopeBreakdown: 'ENCRYPTED', // 🔒 Not revealed
+      timestamp: new Date().toISOString(),
+      user: walletAddress,
+    } : {
+      type: 'CERTIFICATE_CREATED',
+      version: '1.0',
+      application: 'ClimeMate',
+      module: 'Certificate Generation',
+      certificateId: certificateData.id,
+      organizationName: certificateData.organizationName,
+      totalEmissions: certificateData.totalEmissions,
+      scope1Emissions: certificateData.scope1Emissions, // ✅ Logged
+      scope2Emissions: certificateData.scope2Emissions, // ✅ Logged
+      scope3Emissions: certificateData.scope3Emissions, // ✅ Logged
+      timestamp: new Date().toISOString(),
+      user: walletAddress,
+    };
+    
+    // Log to Solana
+    const result = await logCertificateOnChain(
+      walletAddress,
+      logData,
+      signAndSendTransaction
+    );
+    
+    return result;
+  } catch (error: any) {
+    console.error('Failed to log certificate to blockchain:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Generate data hash for integrity verification
+ */
+export function generateDataHash(data: any): string {
+  return CryptoJS.SHA256(JSON.stringify(data)).toString();
 }

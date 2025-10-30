@@ -78,7 +78,7 @@ export async function uploadMetadata(metadata: any): Promise<string> {
   // In production, upload to IPFS/Arweave
   const metadataString = JSON.stringify(metadata);
   const base64 = Buffer.from(metadataString).toString('base64');
-  
+
   // Mock URI - in production, replace with actual IPFS/Arweave upload
   return `data:application/json;base64,${base64}`;
 }
@@ -97,21 +97,21 @@ export async function mintCertificateNFT(
 ): Promise<NFTMintResult> {
   try {
     console.log('🎨 Starting certificate NFT process...');
-    
+
     // Create metadata
     const metadata = createCertificateMetadata(certificateData);
     console.log('📝 Metadata created:', metadata);
-    
+
     // Upload metadata
     const metadataUri = await uploadMetadata(metadata);
     console.log('📤 Metadata uploaded:', metadataUri);
-    
+
     const connection = new Connection(SOLANA_RPC, 'confirmed');
-    
+
     // Create a transaction with memo containing NFT metadata
     // This creates an on-chain record that can be verified
     const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-    
+
     const memoData = JSON.stringify({
       type: 'NFT_CERTIFICATE',
       certificateId: certificateData.certificateId,
@@ -120,13 +120,13 @@ export async function mintCertificateNFT(
       uri: metadataUri,
       timestamp: new Date().toISOString(),
     });
-    
+
     const memoInstruction = new TransactionInstruction({
       keys: [],
       programId: MEMO_PROGRAM_ID,
       data: Buffer.from(memoData, 'utf-8'),
     });
-    
+
     // Add a small transfer to make it a valid transaction
     const transaction = new Transaction().add(
       memoInstruction,
@@ -136,14 +136,14 @@ export async function mintCertificateNFT(
         lamports: 1000, // 0.000001 SOL
       })
     );
-    
+
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = new PublicKey(walletAddress);
     transaction.lastValidBlockHeight = lastValidBlockHeight;
-    
+
     console.log('📦 Transaction created, using Gateway for optimal delivery...');
-    
+
     // Send via Gateway for better delivery and cost savings
     const gatewayResult = await sendTransactionWithGateway({
       transaction,
@@ -151,19 +151,19 @@ export async function mintCertificateNFT(
       signAndSendTransaction,
       connection,
     });
-    
+
     if (!gatewayResult.success) {
       throw new Error(gatewayResult.error || 'Gateway transaction failed');
     }
-    
+
     const signature = gatewayResult.signature!;
     console.log('✅ Transaction sent via Gateway:', signature);
     console.log('💰 Cost savings:', gatewayResult.costSavings, 'lamports');
-    
+
     console.log('✅ Certificate NFT transaction completed!');
     console.log('📝 Transaction:', signature);
     console.log('💡 Note: This creates an on-chain record. For visual NFTs in wallets, consider using a backend minting service.');
-    
+
     return {
       success: true,
       nftAddress: signature, // Using transaction signature as identifier
@@ -211,38 +211,38 @@ export async function logCertificateOnChain(
 ): Promise<{ success: boolean; signature?: string; error?: string }> {
   try {
     console.log('📝 Logging data on Solana blockchain...');
-    
+
     // Log Gateway integration
     logGatewayIntegration();
-    
+
     // Use the provided log data directly (already formatted by caller)
     const logString = JSON.stringify(logData);
     console.log('📋 Log message:', logString);
-    
+
     // Create connection
     const connection = new Connection(SOLANA_RPC, 'confirmed');
-    
+
     // Create memo instruction
     // Memo program ID: MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr
     const MEMO_PROGRAM_ID = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-    
+
     const memoInstruction = new TransactionInstruction({
       keys: [],
       programId: MEMO_PROGRAM_ID,
       data: Buffer.from(logString, 'utf-8'),
     });
-    
+
     // Create transaction with memo
     const transaction = new Transaction().add(memoInstruction);
-    
+
     // Get recent blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = new PublicKey(walletAddress);
     transaction.lastValidBlockHeight = lastValidBlockHeight;
-    
+
     console.log('📦 Memo transaction created, using Gateway for optimal delivery...');
-    
+
     // Send via Gateway for better delivery and cost savings
     const gatewayResult = await sendTransactionWithGateway({
       transaction,
@@ -250,16 +250,16 @@ export async function logCertificateOnChain(
       signAndSendTransaction,
       connection,
     });
-    
+
     if (!gatewayResult.success) {
       throw new Error(gatewayResult.error || 'Gateway transaction failed');
     }
-    
+
     console.log('✅ Certificate logged on-chain via Gateway!');
     console.log('📝 Signature:', gatewayResult.signature);
     console.log('💰 Cost savings:', gatewayResult.costSavings, 'lamports');
     console.log('🔍 View on Solscan:', getExplorerUrl(gatewayResult.signature!));
-    
+
     return {
       success: true,
       signature: gatewayResult.signature,

@@ -6,12 +6,6 @@ import bs58 from 'bs58';
  * 
  * This is a PRODUCTION-READY integration with Sanctum Gateway's actual API.
  * 
- * Gateway solves a critical problem for ClimaSense:
- * - Climate compliance certificates MUST land (99.9% reliability required)
- * - During network congestion, single-path delivery fails
- * - Gateway's multi-path delivery (RPC + Jito) ensures transactions land
- * - Automatic tip refunds save costs at scale
- * 
  * What Gateway Enables (Otherwise Hard/Impossible):
  * 1. Guaranteed certificate delivery during network congestion
  * 2. Real-time delivery method tracking (which path won?)
