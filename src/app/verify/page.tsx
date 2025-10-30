@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Search, 
-  ExternalLink, 
+import {
+  Search,
+  ExternalLink,
   Award,
   CheckCircle,
   Loader2,
@@ -52,11 +52,11 @@ export default function VerifyPage() {
       }
 
       const data = await response.json();
-      
+
       if (data.certificateLog) {
         setCertificateData(data.certificateLog);
       }
-      
+
       if (data.nftMetadata) {
         setNftData(data.nftMetadata);
       }
@@ -113,7 +113,7 @@ export default function VerifyPage() {
                 className="pl-10"
               />
             </div>
-            <Button 
+            <Button
               onClick={handleSearch}
               disabled={isLoading || !txId.trim()}
               className="bg-green-600 hover:bg-green-700"
@@ -169,12 +169,12 @@ export default function VerifyPage() {
                   <label className="text-sm font-medium text-muted-foreground">Certificate ID</label>
                   <div className="flex items-center gap-2 mt-1">
                     <code className="text-sm bg-muted px-2 py-1 rounded font-mono">
-                      {certificateData.certificateId}
+                      {certificateData.certificateId || certificateData.certId}
                     </code>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(certificateData.certificateId)}
+                      onClick={() => copyToClipboard(certificateData.certificateId || certificateData.certId)}
                     >
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -183,62 +183,75 @@ export default function VerifyPage() {
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Total Emissions</label>
                   <p className="text-2xl font-bold text-green-600">
-                    {certificateData.totalEmissions.toLocaleString()} kg CO₂e
+                    {(certificateData.totalEmissions || certificateData.total || 0).toLocaleString()} kg CO₂e
                   </p>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Issue Date</label>
-                  <p className="font-medium">
-                    {format(new Date(certificateData.timestamp), 'PPP p')}
-                  </p>
-                </div>
+                {(certificateData.timestamp || certificateData.ts) && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Issue Date</label>
+                    <p className="font-medium">
+                      {format(new Date(certificateData.timestamp || certificateData.ts), 'PPP p')}
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Data Hash</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all">
-                      {certificateData.dataHash.substring(0, 20)}...
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyToClipboard(certificateData.dataHash)}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
+                {(certificateData.dataHash || certificateData.hash) && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Data Hash</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="text-xs bg-muted px-2 py-1 rounded font-mono break-all">
+                        {(certificateData.dataHash || certificateData.hash).substring(0, 20)}...
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(certificateData.dataHash || certificateData.hash)}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Version</label>
-                  <p className="font-medium">{certificateData.version}</p>
-                </div>
+                )}
+                {certificateData.version && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">Version</label>
+                    <p className="font-medium">{certificateData.version}</p>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Type</label>
                   <Badge variant="secondary">{certificateData.type}</Badge>
                 </div>
+                {certificateData.private === 1 && (
+                  <div>
+                    <Badge className="bg-purple-600">Private Certificate</Badge>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Emissions Breakdown */}
-            <div>
-              <label className="text-sm font-medium text-muted-foreground mb-3 block">
-                Emissions Breakdown
-              </label>
-              <div className="grid gap-2">
-                {Object.entries(certificateData.breakdown).map(([category, emissions]) => (
-                  <div 
-                    key={category} 
-                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                  >
-                    <span className="font-medium capitalize">{category}</span>
-                    <span className="font-bold text-green-600">
-                      {Number(emissions).toFixed(2)} kg CO₂e
-                    </span>
-                  </div>
-                ))}
+            {certificateData.breakdown && Object.keys(certificateData.breakdown).length > 0 && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-3 block">
+                  Emissions Breakdown
+                </label>
+                <div className="grid gap-2">
+                  {Object.entries(certificateData.breakdown).map(([category, emissions]) => (
+                    <div
+                      key={category}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                    >
+                      <span className="font-medium capitalize">{category}</span>
+                      <span className="font-bold text-green-600">
+                        {Number(emissions).toFixed(2)} kg CO₂e
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Blockchain Link */}
             <div className="pt-4 border-t">
@@ -287,9 +300,9 @@ export default function VerifyPage() {
                 <label className="text-sm font-medium text-muted-foreground mb-2 block">
                   Certificate Image
                 </label>
-                <img 
-                  src={nftData.image} 
-                  alt="Certificate" 
+                <img
+                  src={nftData.image}
+                  alt="Certificate"
                   className="w-32 h-32 object-contain bg-muted rounded-lg"
                 />
               </div>

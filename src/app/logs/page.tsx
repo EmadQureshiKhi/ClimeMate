@@ -30,6 +30,7 @@ interface AuditLog {
   userWalletAddress: string;
   status: string;
   error?: string;
+  isPrivate?: boolean; // Privacy mode indicator
   createdAt: string;
 }
 
@@ -359,6 +360,13 @@ export default function LogsPage() {
                         )}
                         {log.status}
                       </Badge>
+                      
+                      {/* Privacy Mode Indicator */}
+                      {log.isPrivate && (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950 dark:text-purple-300">
+                          🔒 Private
+                        </Badge>
+                      )}
                       
                       {/* Memo Transaction */}
                       {log.transactionSignature && (
