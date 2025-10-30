@@ -55,23 +55,54 @@ export async function POST(request: NextRequest) {
       console.log('📋 Checking log messages...');
       for (const log of transaction.meta.logMessages) {
         // Look for memo program logs
-        if (log.includes('Program log:') || log.includes('Memo')) {
-          console.log('📝 Found log:', log);
+        if (log.includes('Program log:') && log.includes('Memo')) {
+          console.log('📝 Found memo log');
           
           // Try to extract JSON from the log
           try {
-            // Look for JSON pattern in the log
-            const jsonMatch = log.match(/\{.*\}/);
-            if (jsonMatch) {
-              const certificateLog = JSON.parse(jsonMatch[0]);
-              if (certificateLog.type === 'CARBON_CERTIFICATE') {
-                result.certificateLog = certificateLog;
-                console.log('✅ Certificate log parsed from logs');
-                break;
+            // Extract JSON from memo log - handle escaped quotes
+            // Format: Program log: Memo (len XXX): "{...}"
+            let jsonStr = log;
+            
+            // Remove the "Program log: Memo (len XXX): " prefix
+            const memoMatch = log.match(/Program log: Memo \(len \d+\): (.+)/);
+            if (memoMatch) {
+              jsonStr = memoMatch[1];
+              // Remove surrounding quotes if present
+              jsonStr = jsonStr.replace(/^"(.*)"$/, '$1');
+              // Unescape the JSON
+              jsonStr = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            } else {
+              // Try to find JSON pattern directly
+              const jsonMatch = log.match(/\{.*\}/);
+              if (jsonMatch) {
+                jsonStr = jsonMatch[0];
               }
             }
+            
+            const certificateLog = JSON.parse(jsonStr);
+            // Accept any certificate-related type
+            if (certificateLog.type && (
+              certificateLog.type.includes('CERT') ||
+              certificateLog.type.includes('CERTIFICATE') ||
+              certificateLog.certId ||
+              certificateLog.certificateId ||
+              (certificateLog.details && certificateLog.details.certificateId)
+            )) {
+              // Flatten details if present
+              if (certificateLog.details) {
+                result.certificateLog = {
+                  ...certificateLog,
+                  ...certificateLog.details,
+                };
+              } else {
+                result.certificateLog = certificateLog;
+              }
+              console.log('✅ Certificate log parsed from logs');
+              break;
+            }
           } catch (e) {
-            // Not JSON, continue
+            console.error('Error parsing memo log:', e);
           }
         }
       }
@@ -117,7 +148,13 @@ export async function POST(request: NextRequest) {
             try {
               // Try to parse as JSON (certificate log)
               const certificateLog = JSON.parse(memoData);
-              if (certificateLog.type === 'CARBON_CERTIFICATE') {
+              // Accept any certificate-related type
+              if (certificateLog.type && (
+                certificateLog.type.includes('CERT') ||
+                certificateLog.type.includes('CERTIFICATE') ||
+                certificateLog.certId ||
+                certificateLog.certificateId
+              )) {
                 result.certificateLog = certificateLog;
                 console.log('✅ Certificate log parsed from instruction');
                 break;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { logCertificateToBlockchain, generateDataHash } from '@/lib/blockchain-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +21,12 @@ export async function POST(request: NextRequest) {
       nftAddress,
       metadataUri,
       logTransactionSignature,
+      // NEW: Privacy fields
+      isPrivate,
+      encryptedDataId,
+      arciumSignature,
+      arciumDataHash,
+      authorizedViewers,
     } = body;
 
     if (!privyUserId || !certificateId) {
@@ -78,8 +85,9 @@ export async function POST(request: NextRequest) {
         certificateId,
         title,
         totalEmissions,
-        breakdown,
-        processedData,
+        // If private mode, don't store breakdown/processedData
+        breakdown: isPrivate ? null : breakdown,
+        processedData: isPrivate ? null : processedData,
         summary,
         status: 'verified',
         issueDate: new Date(),
@@ -90,10 +98,21 @@ export async function POST(request: NextRequest) {
         metadataUri,
         logTransactionSignature,
         ipfsCid: nftAddress, // Keep for backward compatibility
+        // NEW: Privacy fields
+        isPrivate: isPrivate || false,
+        encryptedDataId: isPrivate ? encryptedDataId : null,
+        arciumSignature: isPrivate ? arciumSignature : null,
+        arciumDataHash: isPrivate ? arciumDataHash : null,
+        authorizedViewers: isPrivate && authorizedViewers ? authorizedViewers : [],
       },
     });
 
-    console.log('✅ Certificate created successfully:', certificate.id);
+    console.log(
+      isPrivate 
+        ? '🔒 Private certificate created successfully:' 
+        : '✅ Certificate created successfully:', 
+      certificate.id
+    );
 
     // Log certificate creation to audit logs
     try {
@@ -104,28 +123,43 @@ export async function POST(request: NextRequest) {
         const isUploadData = certificateId.startsWith('GHG-') && !isGHGCalculator;
         
         const module = isGHGCalculator ? 'GHG Calculator' : 'Certificate Generation';
-        const action = isUploadData ? 'upload_data_certificate' : 'certificate_created';
+        const action = isPrivate 
+          ? (isUploadData ? 'private_upload_data_certificate' : 'private_certificate_created')
+          : (isUploadData ? 'upload_data_certificate' : 'certificate_created');
         
-        // Build details based on source
+        // Build details based on source and privacy mode
         const logDetails: any = {
           certificateId: certificate.certificateId,
           title: certificate.title,
-          totalEmissions: certificate.totalEmissions,
+          totalEmissions: certificate.totalEmissions, // Always public
           status: certificate.status,
           issueDate: certificate.issueDate,
         };
         
-        // For Upload Data, include breakdown categories
-        if (isUploadData && breakdown) {
-          logDetails.breakdown = breakdown;
-          logDetails.categories = Object.keys(breakdown).length;
-        }
-        
-        // For GHG Calculator, include scope breakdown
-        if (isGHGCalculator && breakdown) {
-          logDetails.scope1 = breakdown.scope1 || 0;
-          logDetails.scope2 = breakdown.scope2 || 0;
-          logDetails.scope3 = breakdown.scope3 || 0;
+        if (isPrivate) {
+          // Private mode: Log encryption event
+          logDetails.isPrivate = true;
+          logDetails.encryptedDataId = encryptedDataId;
+          logDetails.arciumSignature = arciumSignature;
+          logDetails.dataHash = arciumDataHash;
+          logDetails.scopeBreakdown = 'ENCRYPTED';
+          if (authorizedViewers && authorizedViewers.length > 0) {
+            logDetails.authorizedViewers = authorizedViewers.length;
+          }
+        } else {
+          // Public mode: Log full data
+          // For Upload Data, include breakdown categories
+          if (isUploadData && breakdown) {
+            logDetails.breakdown = breakdown;
+            logDetails.categories = Object.keys(breakdown).length;
+          }
+          
+          // For GHG Calculator, include scope breakdown
+          if (isGHGCalculator && breakdown) {
+            logDetails.scope1 = breakdown.scope1 || 0;
+            logDetails.scope2 = breakdown.scope2 || 0;
+            logDetails.scope3 = breakdown.scope3 || 0;
+          }
         }
         
         await fetch(`${request.nextUrl.origin}/api/audit-logs`, {
@@ -134,13 +168,17 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify({
             module,
             action,
-            transactionSignature: logTransactionSignature || blockchainTx || '',
+            transactionSignature: logTransactionSignature || arciumSignature || blockchainTx || '',
             details: logDetails,
             userWalletAddress: walletAddress,
             userId: privyUserId,
           }),
         });
-        console.log('✅ Audit log created for certificate');
+        console.log(
+          isPrivate 
+            ? '🔒 Private audit log created for certificate' 
+            : '✅ Audit log created for certificate'
+        );
       }
     } catch (logError) {
       console.error('Failed to create audit log:', logError);

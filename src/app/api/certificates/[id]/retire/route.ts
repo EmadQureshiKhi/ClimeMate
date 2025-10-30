@@ -4,11 +4,11 @@ import { mintCertificateNFT } from '@/lib/solana-nft';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { amount, transactionSignature, walletAddress } = await request.json();
-    const certificateId = params.id;
+    const { id: certificateId } = await params;
 
     console.log('🔥 Processing retirement:', {
       certificateId,

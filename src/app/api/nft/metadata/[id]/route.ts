@@ -46,28 +46,35 @@ export async function GET(
 
     // Check if this is a GHG Calculator certificate
     const isGHGCalc = baseCertificateId.startsWith('GHG-CALC-');
-    
+
     // Calculate offset percentage if this is an offset certificate
     const offsetAmount = certificate.offsetAmount || 0;
-    const offsetPercentage = certificate.totalEmissions > 0 
+    const offsetPercentage = certificate.totalEmissions > 0
       ? ((offsetAmount / certificate.totalEmissions) * 100).toFixed(2)
       : '0.00';
-    
+
     // Create NFT metadata with comprehensive attributes
     const metadata = {
-      name: isOffsetCert 
+      name: isOffsetCert
         ? `Offset Certificate ${baseCertificateId} (${offsetPercentage}%)`
-        : isGHGCalc 
-          ? `GHG Calculator Certificate` 
+        : isGHGCalc
+          ? `GHG Calculator Certificate`
           : `Carbon Certificate ${baseCertificateId}`,
       symbol: 'CARBON',
       description: isOffsetCert
         ? `Carbon offset certificate documenting ${offsetAmount.toFixed(2)} kg CO₂e retired (${offsetPercentage}% of ${certificate.totalEmissions.toFixed(2)} kg CO₂e total emissions) across ${categories} categories from ${totalRows} activities.`
-        : isGHGCalc 
+        : isGHGCalc
           ? `GHG Calculator verified certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`
           : `Verified carbon footprint certificate documenting ${certificate.totalEmissions.toFixed(2)} kg CO₂e emissions across ${categories} categories from ${totalRows} activities.`,
       image: 'https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png',
       external_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/certificates/${baseCertificateId}`,
+      properties: {
+        category: 'Carbon Certificate',
+        files: [{
+          uri: 'https://i.ibb.co/dwzM2KLM/Untitled-design-removebg-preview.png',
+          type: 'image/png',
+        }],
+      },
       attributes: [
         {
           trait_type: 'Certificate ID',
