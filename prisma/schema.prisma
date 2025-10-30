@@ -83,6 +83,14 @@ model Certificate {
   metadataUri     String?  // NFT metadata URI (original)
   logTransactionSignature String? // Solana memo log transaction
   ipfsCid         String?  // IPFS metadata (legacy)
+  
+  // Arcium Privacy Fields
+  isPrivate         Boolean  @default(false) // Privacy mode toggle
+  encryptedDataId   String?  // Arcium certificate account pubkey
+  arciumSignature   String?  // Arcium encryption transaction signature
+  arciumDataHash    String?  // SHA256 hash of encrypted data
+  authorizedViewers String[] @default([]) // Wallet addresses with decrypt access
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -92,6 +100,8 @@ model Certificate {
   @@index([userId])
   @@index([certificateId])
   @@index([status])
+  @@index([isPrivate])
+  @@index([encryptedDataId])
 }
 
 // Carbon Credits from Marketplace
@@ -169,6 +179,11 @@ model SEMAClient {
   industry    String
   size        String   // Small, Medium, Large, Enterprise
   status      String   @default("active") // active, inactive, demo
+  
+  // Global Privacy Settings
+  privacyMode         Boolean  @default(false) // Global privacy toggle for all SEMA operations
+  authorizedAuditors  String[] @default([]) // Wallet addresses with decrypt access
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -178,6 +193,7 @@ model SEMAClient {
 
   @@index([userId])
   @@index([status])
+  @@index([privacyMode])
 }
 
 // SEMA Stakeholders
@@ -220,6 +236,7 @@ model SEMABlockchainLog {
   details               Json?    // Complete audit data payload
   metadata              Json?    // Additional data about the action (deprecated, use details)
   userWalletAddress     String   // Solana wallet address of user who performed action
+  isPrivate             Boolean  @default(false) // Whether this log is for a privacy-mode operation
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -230,6 +247,7 @@ model SEMABlockchainLog {
   @@index([status])
   @@index([createdAt])
   @@index([module])
+  @@index([isPrivate])
 }
 
 // General Audit Logs (for certificates, uploads, etc.)
@@ -334,11 +352,26 @@ model SEMAReport {
   processSummary  Json     @default("{}")
   status          String   @default("draft") // draft, final, published
   generatedAt     DateTime @default(now())
+  
+  // Arcium Privacy Fields
+  isPrivate         Boolean  @default(false) // Privacy mode toggle
+  encryptedReportId String?  // Arcium report account pubkey
+  arciumSignature   String?  // Arcium encryption transaction signature
+  arciumDataHash    String?  // SHA256 hash of encrypted data
+  authorizedAuditors String[] @default([]) // Auditor wallet addresses with decrypt access
+  
+  // Public summary (always visible even in private mode)
+  totalStakeholders   Int?
+  totalMaterialTopics Int?
+  complianceScore     Float?
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([clientId])
   @@index([status])
+  @@index([isPrivate])
+  @@index([encryptedReportId])
 }
 
 // ============================================

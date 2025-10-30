@@ -1,7 +1,7 @@
--- ============================================
+
 -- Phase 4: Virtual World Database Schema
--- Standalone version for Supabase SQL Editor
--- ============================================
+
+
 
 -- User profiles for virtual world
 CREATE TABLE IF NOT EXISTS virtual_profiles (
