@@ -1,0 +1,36 @@
+# Vercel Ignore - Files/folders not needed for deployment
+
+# Anchor/Solana program files (not needed for Next.js app)
+co2e-escrow/target/
+co2e-escrow/scripts/
+co2e-escrow/tests/
+co2e-escrow/node_modules/
+
+# Documentation (optional - remove if you want docs deployed)
+docs/
+
+# Development files
+.vscode/
+.git/
+*.log
+.env.local
+.env.development
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+
+# Scripts that were only for setup
+scripts/setup-*.sh
+scripts/fund-*.ts
+scripts/create-*.sh
+scripts/add-*.ts
+scripts/map-*.ts
+
+# Migration files (already applied to database)
+migrations/
+
+# Large dependencies not needed at runtime
+node_modules/.cache/
+.next/cache/
