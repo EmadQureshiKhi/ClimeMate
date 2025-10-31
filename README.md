@@ -253,9 +253,13 @@ This project was built for the **Solana Cypherpunk Hackathon** by Colosseum, sho
 
 ## 🔗 Links & Resources
 
-### Live Platform
-- **Demo:** https://climemate.vercel.app
-- **Documentation:** [SOLANA_INTEGRATIONS.md](./docs/SOLANA_INTEGRATIONS.md)
+### Project Links
+- **Website:** https://climemate.vercel.app
+- **GitHub Repository:** https://github.com/EmadQureshiKhi/ClimeMate
+- **Project Demo Video:** https://youtu.be/hZn68NLEDF8
+- **Pitch Deck Demo:** https://youtu.be/_jd0JomBc9c?si=aK06lU6uIiK8BiFC
+- **Pitch Deck:** https://drive.google.com/file/d/1r_-6f5zNoHwHmns2sYsidMNrkgVJNAQG/view?usp=sharing
+
 
 ### Blockchain Explorers
 - **Solana Explorer:** https://explorer.solana.com
@@ -274,8 +278,17 @@ This project was built for the **Solana Cypherpunk Hackathon** by Colosseum, sho
 
 ---
 
-Built with ❤️ for a sustainable future
+## 📊 Platform Statistics
+
+- **Total CO₂e Supply:** 1,000,000 tokens
+- **Tokens in Escrow:** 499,999 CO₂e (available for purchase)
+- **Treasury Reserves:** 500,000 CO₂e (multi-sig controlled)
+- **Token Price:** 0.00005 SOL per CO₂e
+- **Certificates Issued:** Tracked on-chain via compressed NFTs
+- **Total Retirements:** Verifiable via memo transaction logs
 
 ---
+
+Built with ❤️ for a sustainable future
 
 **Made with Solana 🌞**
