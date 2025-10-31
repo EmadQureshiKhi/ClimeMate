@@ -1,0 +1,10 @@
+/Users/nokitha/Desktop/ALL MY PROJECTS/CLIMASENSE SOL/arcium-mpc/target/debug/deps/arcis_interface-9382478acd2746b5.d: /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/lib.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/json.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/string.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/types.rs
+
+/Users/nokitha/Desktop/ALL MY PROJECTS/CLIMASENSE SOL/arcium-mpc/target/debug/deps/libarcis_interface-9382478acd2746b5.rlib: /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/lib.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/json.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/string.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/types.rs
+
+/Users/nokitha/Desktop/ALL MY PROJECTS/CLIMASENSE SOL/arcium-mpc/target/debug/deps/libarcis_interface-9382478acd2746b5.rmeta: /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/lib.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/json.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/string.rs /Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/types.rs
+
+/Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/lib.rs:
+/Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/json.rs:
+/Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/string.rs:
+/Users/nokitha/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arcis-interface-0.3.0/src/types.rs:

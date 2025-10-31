@@ -1,0 +1,1 @@
+export type CalculateOffsetPercentage = {"name":"calculate_offset_percentage","inputs":[{"size_in_bits":64,"type":"u64"},{"size_in_bits":64,"type":"u64"}],"outputs":[{"size_in_bits":64,"type":"u64"}]}
