@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Shield, Lock, Unlock, Eye, EyeOff, Info, AlertCircle } from 'lucide-react';
 import { useWallets } from '@privy-io/react-auth/solana';
-import { ArciumCertificateClient } from '@/lib/arcium-certificates';
+import { ArciumCertificateClient } from '@/lib/arcium';
 import { useToast } from '@/hooks/use-toast';
 
 interface PrivateCertificateViewerProps {

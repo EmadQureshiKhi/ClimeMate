@@ -29,7 +29,7 @@ import { logCertificateOnChain } from '@/lib/solana-nft';
 import CryptoJS from 'crypto-js';
 import { BlockchainVerificationCard } from './blockchain-verification-card';
 import { PrivacyToggle } from '@/components/privacy/privacy-toggle';
-import { ArciumSEMAClient } from '@/lib/arcium-sema';
+import { ArciumSEMAClient } from '@/lib/arcium';
 
 export default function ReportingDashboard() {
   const { 

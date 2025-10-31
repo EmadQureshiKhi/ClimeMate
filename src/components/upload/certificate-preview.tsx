@@ -22,7 +22,7 @@ import CryptoJS from 'crypto-js';
 import { mintCertificateNFT, logCertificateOnChain, getExplorerUrl, getNFTExplorerUrl, type CertificateMetadata } from '@/lib/solana-nft';
 import { NotificationToast } from './notification-toast';
 import { PrivacyToggle } from '@/components/privacy/privacy-toggle';
-import { ArciumCertificateClient } from '@/lib/arcium-certificates';
+import { ArciumCertificateClient } from '@/lib/arcium';
 
 interface CertificatePreviewProps {
   calculations: any;
